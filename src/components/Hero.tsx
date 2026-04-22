@@ -5,6 +5,7 @@ import { GitHubRelease } from '@/lib/github';
 import { motion } from 'framer-motion';
 import { Download, Monitor, Apple, Terminal, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 interface HeroProps {
   release: GitHubRelease | null;
@@ -34,12 +35,12 @@ export default function Hero({ release }: HeroProps) {
         icon: <Apple className="w-5 h-5" />
       };
     } else if (os === 'linux') {
-      const linuxAsset = assets.find(a => a.name.endsWith('.AppImage')) 
-        || assets.find(a => a.name.endsWith('.deb')) 
+      const linuxAsset = assets.find(a => a.name.endsWith('.AppImage'))
+        || assets.find(a => a.name.endsWith('.deb'))
         || assets.find(a => a.name.endsWith('.rpm'));
-      const ext = linuxAsset?.name.endsWith('.AppImage') ? '.AppImage' : 
-                  linuxAsset?.name.endsWith('.deb') ? '.deb' : 
-                  linuxAsset?.name.endsWith('.rpm') ? '.rpm' : '.AppImage';
+      const ext = linuxAsset?.name.endsWith('.AppImage') ? '.AppImage' :
+        linuxAsset?.name.endsWith('.deb') ? '.deb' :
+          linuxAsset?.name.endsWith('.rpm') ? '.rpm' : '.AppImage';
       return {
         label: 'Télécharger pour Linux',
         sub: ext + ' — v' + release.version,
@@ -68,7 +69,9 @@ export default function Hero({ release }: HeroProps) {
 
       {/* Top Bar (Style Launcher) */}
       <header className="relative z-20 flex justify-between items-center px-12 py-8">
-        <div className="text-xl font-black tracking-tighter">LAUNCHED</div>
+        <div className="flex items-center gap-3">
+          <div className="text-xl font-black tracking-tighter">LAUNCHED</div>
+        </div>
         <nav className="flex items-center gap-8 text-[11px] font-bold tracking-[0.2em] uppercase text-zinc-500">
           <a href="#features" className="hover:text-white transition-colors">Fonctionnalités</a>
           <Link href="/downloads" className="hover:text-white transition-colors">Versions</Link>
@@ -87,7 +90,22 @@ export default function Hero({ release }: HeroProps) {
           LAUNCHED
         </motion.div>
 
-
+        <motion.div
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+          className="relative group"
+        >
+          <div className="absolute inset-0 bg-blue-500/20 blur-[100px] rounded-full group-hover:bg-blue-500/30 transition-colors duration-700" />
+          <Image
+            src="/logo.png"
+            alt="Launched App Icon"
+            width={240}
+            height={240}
+            className="relative drop-shadow-2xl hover:scale-105 transition-transform duration-700"
+            priority
+          />
+        </motion.div>
       </div>
 
       {/* Bottom Bar (Action Area) */}
@@ -109,8 +127,8 @@ export default function Hero({ release }: HeroProps) {
             </div>
           </a>
 
-          <Link 
-            href="/downloads" 
+          <Link
+            href="/downloads"
             className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest hover:text-white transition-colors"
           >
             Autres formats (.deb, .rpm, .msi)
