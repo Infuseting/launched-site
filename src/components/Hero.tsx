@@ -4,6 +4,7 @@ import { useOSDetection } from '@/hooks/useOSDetection';
 import { GitHubRelease } from '@/lib/github';
 import { motion } from 'framer-motion';
 import { Download, Monitor, Apple, Terminal } from 'lucide-react';
+import Link from 'next/link';
 
 interface HeroProps {
   release: GitHubRelease | null;
@@ -92,9 +93,17 @@ export default function Hero({ release }: HeroProps) {
           </a>
 
           {release && (
-            <p className="text-zinc-500 font-mono text-sm">
-              Version {release.version}
-            </p>
+            <div className="flex flex-col items-center gap-2">
+              <p className="text-zinc-500 font-mono text-sm">
+                Version {release.version}
+              </p>
+              <Link 
+                href="/downloads" 
+                className="text-zinc-500 hover:text-white transition-colors text-xs underline underline-offset-4"
+              >
+                Toutes les versions
+              </Link>
+            </div>
           )}
         </motion.div>
       </div>
