@@ -90,22 +90,7 @@ export default function Hero({ release }: HeroProps) {
           LAUNCHED
         </motion.div>
 
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
-          className="relative group"
-        >
-          <div className="absolute inset-0 bg-blue-500/20 blur-[100px] rounded-full group-hover:bg-blue-500/30 transition-colors duration-700" />
-          <Image
-            src="/logo.png"
-            alt="Launched App Icon"
-            width={240}
-            height={240}
-            className="relative drop-shadow-2xl hover:scale-105 transition-transform duration-700"
-            priority
-          />
-        </motion.div>
+
       </div>
 
       {/* Bottom Bar (Action Area) */}
