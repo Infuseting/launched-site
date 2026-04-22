@@ -9,22 +9,22 @@ export default async function DownloadsPage() {
     {
       name: "Windows",
       icon: Monitor,
-      extension: ".exe",
-      description: "Installeur standard pour Windows 10/11.",
+      extensions: [".exe", ".msi"],
+      description: "Installeur standard ou package MSI pour Windows 10/11.",
       color: "text-blue-500",
     },
     {
       name: "macOS",
       icon: Apple,
-      extension: ".dmg",
+      extensions: [".dmg"],
       description: "Image disque pour macOS (Intel & Apple Silicon).",
       color: "text-zinc-200",
     },
     {
       name: "Linux",
       icon: Terminal,
-      extension: ".AppImage",
-      description: "Format universel compatible avec la plupart des distributions.",
+      extensions: [".AppImage", ".deb", ".rpm"],
+      description: "Formats variés pour les différentes distributions Linux.",
       color: "text-orange-500",
     },
   ];
@@ -56,8 +56,9 @@ export default async function DownloadsPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {platforms.map((platform) => {
-            const asset = release?.assets.find(a => a.name.endsWith(platform.extension));
-            const downloadUrl = asset?.browser_download_url || "#";
+            const availableAssets = platform.extensions
+              .map(ext => ({ ext, asset: release?.assets.find(a => a.name.endsWith(ext)) }))
+              .filter(item => item.asset);
 
             return (
               <div 
@@ -85,22 +86,27 @@ export default async function DownloadsPage() {
                   )}
                 </div>
 
-                {asset ? (
-                  <a
-                    href={downloadUrl}
-                    className="mt-auto flex items-center justify-center gap-2 bg-white text-black py-4 rounded-2xl font-bold transition-all hover:bg-zinc-200 active:scale-[0.98]"
-                  >
-                    <Download className="w-5 h-5" />
-                    Télécharger {platform.extension}
-                  </a>
-                ) : (
-                  <button
-                    disabled
-                    className="mt-auto flex items-center justify-center gap-2 bg-white/10 text-white/30 py-4 rounded-2xl font-bold cursor-not-allowed"
-                  >
-                    Non disponible
-                  </button>
-                )}
+                <div className="mt-auto flex flex-col gap-3">
+                  {availableAssets.length > 0 ? (
+                    availableAssets.map(({ ext, asset }) => (
+                      <a
+                        key={ext}
+                        href={asset!.browser_download_url}
+                        className="flex items-center justify-center gap-2 bg-white text-black py-4 rounded-2xl font-bold transition-all hover:bg-zinc-200 active:scale-[0.98]"
+                      >
+                        <Download className="w-5 h-5" />
+                        Télécharger {ext}
+                      </a>
+                    ))
+                  ) : (
+                    <button
+                      disabled
+                      className="flex items-center justify-center gap-2 bg-white/10 text-white/30 py-4 rounded-2xl font-bold cursor-not-allowed"
+                    >
+                      Non disponible
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}

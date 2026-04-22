@@ -16,12 +16,14 @@ export default function Hero({ release }: HeroProps) {
   const getDownloadInfo = () => {
     if (!release) return { label: 'Télécharger', url: '#', icon: <Download className="w-5 h-5" /> };
     const assets = release.assets;
-    
+
     if (os === 'windows') {
+      const winAsset = assets.find(a => a.name.endsWith('.exe')) || assets.find(a => a.name.endsWith('.msi'));
+      const ext = winAsset?.name.endsWith('.exe') ? '.exe' : '.msi';
       return {
         label: 'Télécharger pour Windows',
-        sub: '.exe — v' + release.version,
-        url: assets.find(a => a.name.endsWith('.exe'))?.browser_download_url || '#',
+        sub: ext + ' — v' + release.version,
+        url: winAsset?.browser_download_url || '#',
         icon: <Monitor className="w-5 h-5" />
       };
     } else if (os === 'macos') {
@@ -32,10 +34,16 @@ export default function Hero({ release }: HeroProps) {
         icon: <Apple className="w-5 h-5" />
       };
     } else if (os === 'linux') {
+      const linuxAsset = assets.find(a => a.name.endsWith('.AppImage')) 
+        || assets.find(a => a.name.endsWith('.deb')) 
+        || assets.find(a => a.name.endsWith('.rpm'));
+      const ext = linuxAsset?.name.endsWith('.AppImage') ? '.AppImage' : 
+                  linuxAsset?.name.endsWith('.deb') ? '.deb' : 
+                  linuxAsset?.name.endsWith('.rpm') ? '.rpm' : '.AppImage';
       return {
         label: 'Télécharger pour Linux',
-        sub: '.AppImage — v' + release.version,
-        url: assets.find(a => a.name.endsWith('.AppImage'))?.browser_download_url || '#',
+        sub: ext + ' — v' + release.version,
+        url: linuxAsset?.browser_download_url || '#',
         icon: <Terminal className="w-5 h-5" />
       };
     }
@@ -78,18 +86,8 @@ export default function Hero({ release }: HeroProps) {
         >
           LAUNCHED
         </motion.div>
-        
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.8 }}
-          className="text-center"
-        >
-          <h2 className="text-4xl md:text-5xl font-black tracking-tighter mb-4">Le launcher, réinventé.</h2>
-          <p className="text-zinc-500 max-w-md mx-auto text-sm leading-relaxed">
-            Minimaliste, performant et optimisé pour votre espace disque.
-          </p>
-        </motion.div>
+
+
       </div>
 
       {/* Bottom Bar (Action Area) */}
@@ -110,9 +108,16 @@ export default function Hero({ release }: HeroProps) {
               <span className="text-[10px] font-bold opacity-50 uppercase tracking-widest">{info.sub}</span>
             </div>
           </a>
+
+          <Link 
+            href="/downloads" 
+            className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest hover:text-white transition-colors"
+          >
+            Autres formats (.deb, .rpm, .msi)
+          </Link>
         </motion.div>
 
-        <motion.div 
+        <motion.div
           animate={{ y: [0, 5, 0] }}
           transition={{ repeat: Infinity, duration: 2 }}
           className="text-zinc-600"
