@@ -3,7 +3,7 @@
 import { useOSDetection } from '@/hooks/useOSDetection';
 import { GitHubRelease } from '@/lib/github';
 import { motion } from 'framer-motion';
-import { Download, Monitor, Apple, Terminal } from 'lucide-react';
+import { Download, Monitor, Apple, Terminal, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 
 interface HeroProps {
@@ -15,101 +15,111 @@ export default function Hero({ release }: HeroProps) {
 
   const getDownloadInfo = () => {
     if (!release) return { label: 'Télécharger', url: '#', icon: <Download className="w-5 h-5" /> };
-
     const assets = release.assets;
-    let targetAsset = null;
-
+    
     if (os === 'windows') {
-      targetAsset = assets.find(a => a.name.endsWith('.exe'));
       return {
-        label: 'Télécharger pour Windows (.exe)',
-        url: targetAsset?.browser_download_url || '#',
+        label: 'Télécharger pour Windows',
+        sub: '.exe — v' + release.version,
+        url: assets.find(a => a.name.endsWith('.exe'))?.browser_download_url || '#',
         icon: <Monitor className="w-5 h-5" />
       };
     } else if (os === 'macos') {
-      targetAsset = assets.find(a => a.name.endsWith('.dmg'));
       return {
-        label: 'Télécharger pour macOS (.dmg)',
-        url: targetAsset?.browser_download_url || '#',
+        label: 'Télécharger pour macOS',
+        sub: '.dmg — v' + release.version,
+        url: assets.find(a => a.name.endsWith('.dmg'))?.browser_download_url || '#',
         icon: <Apple className="w-5 h-5" />
       };
     } else if (os === 'linux') {
-      targetAsset = assets.find(a => a.name.endsWith('.AppImage'));
       return {
-        label: 'Télécharger pour Linux (.AppImage)',
-        url: targetAsset?.browser_download_url || '#',
+        label: 'Télécharger pour Linux',
+        sub: '.AppImage — v' + release.version,
+        url: assets.find(a => a.name.endsWith('.AppImage'))?.browser_download_url || '#',
         icon: <Terminal className="w-5 h-5" />
       };
     }
 
     return {
-      label: 'Télécharger la dernière version',
+      label: 'Télécharger Launched',
+      sub: 'v' + (release?.version || ''),
       url: release?.assets?.[0]?.browser_download_url || '#',
       icon: <Download className="w-5 h-5" />
     };
   };
 
-  const downloadInfo = getDownloadInfo();
+  const info = getDownloadInfo();
 
   return (
-    <section className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden bg-black">
-      {/* Background Effect */}
+    <section className="relative h-screen w-full flex flex-col bg-[#050505] overflow-hidden">
+      {/* Background Immersif (Vignette) */}
       <div className="absolute inset-0 z-0">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(50,50,50,0.5),rgba(0,0,0,1))]" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-500/10 blur-[120px] rounded-full animate-pulse" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/60 z-10" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(20,20,20,1),rgba(5,5,5,1))]" />
       </div>
 
-      <div className="relative z-10 text-center px-4">
-        <motion.h1
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
-          className="text-8xl md:text-9xl font-black tracking-tighter text-white mb-4"
+      {/* Top Bar (Style Launcher) */}
+      <header className="relative z-20 flex justify-between items-center px-12 py-8">
+        <div className="text-xl font-black tracking-tighter">LAUNCHED</div>
+        <nav className="flex items-center gap-8 text-[11px] font-bold tracking-[0.2em] uppercase text-zinc-500">
+          <a href="#features" className="hover:text-white transition-colors">Fonctionnalités</a>
+          <Link href="/downloads" className="hover:text-white transition-colors">Versions</Link>
+          <a href="#" className="hover:text-white transition-colors">Discord</a>
+        </nav>
+      </header>
+
+      {/* Center Logo */}
+      <div className="flex-1 flex flex-col items-center justify-center relative z-10">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
+          animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+          transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
+          className="text-[12vw] font-black tracking-tighter text-white opacity-[0.03] select-none pointer-events-none absolute"
         >
           LAUNCHED
-        </motion.h1>
-
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4, duration: 0.8 }}
-          className="text-xl md:text-2xl text-zinc-400 mb-12 max-w-2xl mx-auto font-light tracking-wide"
-        >
-          Un launcher Minecraft minimaliste et performant pour l'ère moderne.
-        </motion.p>
-
+        </motion.div>
+        
         <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.6, duration: 0.5 }}
-          className="flex flex-col items-center gap-4"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, duration: 0.8 }}
+          className="text-center"
         >
-          <a
-            href={downloadInfo.url}
-            className="group flex items-center gap-3 bg-white text-black px-8 py-4 rounded-full font-bold text-lg hover:bg-zinc-200 transition-all transform hover:scale-105 active:scale-95 shadow-[0_0_20px_rgba(255,255,255,0.2)]"
-          >
-            {downloadInfo.icon}
-            {downloadInfo.label}
-          </a>
-
-          {release && (
-            <div className="flex flex-col items-center gap-2">
-              <p className="text-zinc-500 font-mono text-sm">
-                Version {release.version}
-              </p>
-              <Link 
-                href="/downloads" 
-                className="text-zinc-500 hover:text-white transition-colors text-xs underline underline-offset-4"
-              >
-                Toutes les versions
-              </Link>
-            </div>
-          )}
+          <h2 className="text-4xl md:text-5xl font-black tracking-tighter mb-4">Le launcher, réinventé.</h2>
+          <p className="text-zinc-500 max-w-md mx-auto text-sm leading-relaxed">
+            Minimaliste, performant et optimisé pour votre espace disque.
+          </p>
         </motion.div>
       </div>
 
-      {/* Bottom fade */}
-      <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black to-transparent" />
+      {/* Bottom Bar (Action Area) */}
+      <footer className="relative z-20 px-12 py-12 flex flex-col items-center gap-8">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="flex flex-col items-center gap-4"
+        >
+          <a
+            href={info.url}
+            className="group relative flex items-center justify-center px-16 py-6 bg-white text-black rounded-2xl overflow-hidden hover:scale-[1.02] active:scale-[0.98] transition-all duration-300"
+          >
+            <div className="absolute inset-0 bg-blue-600 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+            <div className="relative flex flex-col items-center group-hover:text-white transition-colors">
+              <span className="text-xl font-black tracking-tighter uppercase">{info.label}</span>
+              <span className="text-[10px] font-bold opacity-50 uppercase tracking-widest">{info.sub}</span>
+            </div>
+          </a>
+        </motion.div>
+
+        <motion.div 
+          animate={{ y: [0, 5, 0] }}
+          transition={{ repeat: Infinity, duration: 2 }}
+          className="text-zinc-600"
+        >
+          <ChevronDown className="w-5 h-5" />
+        </motion.div>
+      </footer>
     </section>
   );
 }
