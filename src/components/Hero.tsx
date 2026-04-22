@@ -14,7 +14,7 @@ export default function Hero({ release }: HeroProps) {
   const os = useOSDetection();
 
   const getDownloadInfo = () => {
-    if (!release) return { label: 'Download Latest', url: '#', icon: <Download className="w-5 h-5" /> };
+    if (!release) return { label: 'Télécharger', url: '#', icon: <Download className="w-5 h-5" /> };
 
     const assets = release.assets;
     let targetAsset = null;
@@ -22,28 +22,28 @@ export default function Hero({ release }: HeroProps) {
     if (os === 'windows') {
       targetAsset = assets.find(a => a.name.endsWith('.exe'));
       return {
-        label: 'Download for Windows (.exe)',
+        label: 'Télécharger pour Windows (.exe)',
         url: targetAsset?.browser_download_url || '#',
         icon: <Monitor className="w-5 h-5" />
       };
     } else if (os === 'macos') {
       targetAsset = assets.find(a => a.name.endsWith('.dmg'));
       return {
-        label: 'Download for macOS (.dmg)',
+        label: 'Télécharger pour macOS (.dmg)',
         url: targetAsset?.browser_download_url || '#',
         icon: <Apple className="w-5 h-5" />
       };
     } else if (os === 'linux') {
       targetAsset = assets.find(a => a.name.endsWith('.AppImage'));
       return {
-        label: 'Download for Linux (.AppImage)',
+        label: 'Télécharger pour Linux (.AppImage)',
         url: targetAsset?.browser_download_url || '#',
         icon: <Terminal className="w-5 h-5" />
       };
     }
 
     return {
-      label: 'Download Latest Version',
+      label: 'Télécharger la dernière version',
       url: release?.assets?.[0]?.browser_download_url || '#',
       icon: <Download className="w-5 h-5" />
     };
@@ -75,7 +75,7 @@ export default function Hero({ release }: HeroProps) {
           transition={{ delay: 0.4, duration: 0.8 }}
           className="text-xl md:text-2xl text-zinc-400 mb-12 max-w-2xl mx-auto font-light tracking-wide"
         >
-          A minimalist, high-performance Minecraft launcher for the modern era.
+          Un launcher Minecraft minimaliste et performant pour l'ère moderne.
         </motion.p>
 
         <motion.div

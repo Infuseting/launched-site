@@ -8,8 +8,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Launched - Immersive Launcher Portal",
-  description: "Experience the ultimate Minecraft hub with multi-launcher support and intelligent disk optimization.",
+  title: "Launched - Portail Immersif",
+  description: "Découvrez le hub ultime pour Minecraft avec support multi-launcher et optimisation intelligente du disque.",
 };
 
 export default function RootLayout({
