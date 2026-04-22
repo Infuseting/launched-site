@@ -52,10 +52,10 @@ export default function Hero({ release }: HeroProps) {
 
   return (
     <section className="relative h-screen w-full flex flex-col bg-[#050505] overflow-hidden">
-      {/* Background Immersif (Vignette) */}
+      {/* Background Ultra-Clean (Pure Black + Soft Vignette) */}
       <div className="absolute inset-0 z-0">
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/60 z-10" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(20,20,20,1),rgba(5,5,5,1))]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/40 z-10" />
+        <div className="absolute inset-0 bg-black" />
       </div>
 
       {/* Top Bar (Style Launcher) */}
