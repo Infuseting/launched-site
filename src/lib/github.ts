@@ -11,6 +11,12 @@ export async function getLatestRelease(): Promise<GitHubRelease | null> {
     const res = await fetch('https://api.github.com/repos/Infuseting/launched/releases/latest', {
       next: { revalidate: 3600 } // Cache for 1 hour
     });
+    
+    if (!res.ok) {
+      console.error(`GitHub API error: ${res.status} ${res.statusText}`);
+      return null;
+    }
+
     const data = await res.json();
     return {
       version: data.tag_name,

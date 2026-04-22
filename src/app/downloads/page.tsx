@@ -86,14 +86,22 @@ export default async function DownloadsPage() {
                   )}
                 </div>
 
-                <a
-                  href={downloadUrl}
-                  className="mt-auto flex items-center justify-center gap-2 bg-white text-black py-4 rounded-2xl font-bold transition-all hover:bg-zinc-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-                  onClick={!asset ? (e) => e.preventDefault() : undefined}
-                >
-                  <Download className="w-5 h-5" />
-                  Télécharger {platform.extension}
-                </a>
+                {asset ? (
+                  <a
+                    href={downloadUrl}
+                    className="mt-auto flex items-center justify-center gap-2 bg-white text-black py-4 rounded-2xl font-bold transition-all hover:bg-zinc-200 active:scale-[0.98]"
+                  >
+                    <Download className="w-5 h-5" />
+                    Télécharger {platform.extension}
+                  </a>
+                ) : (
+                  <button
+                    disabled
+                    className="mt-auto flex items-center justify-center gap-2 bg-white/10 text-white/30 py-4 rounded-2xl font-bold cursor-not-allowed"
+                  >
+                    Non disponible
+                  </button>
+                )}
               </div>
             );
           })}
