@@ -20,7 +20,7 @@ export async function getLatestRelease(): Promise<GitHubRelease | null> {
     const data = await res.json();
     return {
       version: data.tag_name,
-      assets: data.assets.map((a: any) => ({
+      assets: (data.assets as { name: string; browser_download_url: string }[]).map((a) => ({
         name: a.name,
         browser_download_url: a.browser_download_url
       }))

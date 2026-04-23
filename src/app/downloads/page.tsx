@@ -42,7 +42,7 @@ export default async function DownloadsPage() {
           className="inline-flex items-center gap-2 text-zinc-400 hover:text-white transition-colors mb-12 group"
         >
           <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-          Retour à l'accueil
+          Retour à l&apos;accueil
         </Link>
 
         <div className="mb-16">
@@ -114,9 +114,9 @@ export default async function DownloadsPage() {
 
         {/* Alternative downloads / Info */}
         <div className="mt-20 glass p-8 rounded-3xl border-dashed">
-          <h3 className="text-xl font-bold mb-4">Besoin d'aide ?</h3>
+          <h3 className="text-xl font-bold mb-4">Besoin d&apos;aide ?</h3>
           <p className="text-zinc-400 text-sm leading-relaxed max-w-3xl">
-            Si votre système n'est pas répertorié ci-dessus, vous pouvez consulter la liste complète des fichiers sur notre 
+            Si votre système n&apos;est pas répertorié ci-dessus, vous pouvez consulter la liste complète des fichiers sur notre 
             <a href="https://github.com/Infuseting/launched/releases" className="text-blue-500 hover:underline ml-1" target="_blank" rel="noopener noreferrer">
               page des releases GitHub
             </a>. 
