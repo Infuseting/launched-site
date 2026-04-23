@@ -3,30 +3,26 @@
 import { useOSDetection } from '@/hooks/useOSDetection';
 import { GitHubRelease } from '@/lib/github';
 import { motion } from 'framer-motion';
-import { Download, Monitor, Apple, Terminal, ChevronDown } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 
 export default function Hero({ release }: { release: GitHubRelease | null }) {
   const os = useOSDetection();
   
   const getDownloadInfo = () => {
-    if (!release) return { label: 'Télécharger', url: '#', icon: <Download className="w-5 h-5" /> };
+    if (!release) return { url: '#', sub: '' };
     const assets = release.assets;
 
     if (os === 'windows') {
       const winAsset = assets.find(a => a.name.endsWith('.exe')) || assets.find(a => a.name.endsWith('.msi'));
       const ext = winAsset?.name.endsWith('.exe') ? '.exe' : '.msi';
       return {
-        label: 'Télécharger pour Windows',
         sub: ext + ' — v' + release.version,
         url: winAsset?.browser_download_url || '#',
-        icon: <Monitor className="w-5 h-5" />
       };
     } else if (os === 'macos') {
       return {
-        label: 'Télécharger pour macOS',
         sub: '.dmg — v' + release.version,
         url: assets.find(a => a.name.endsWith('.dmg'))?.browser_download_url || '#',
-        icon: <Apple className="w-5 h-5" />
       };
     } else if (os === 'linux') {
       const linuxAsset = assets.find(a => a.name.endsWith('.AppImage'))
@@ -36,18 +32,14 @@ export default function Hero({ release }: { release: GitHubRelease | null }) {
         linuxAsset?.name.endsWith('.deb') ? '.deb' :
           linuxAsset?.name.endsWith('.rpm') ? '.rpm' : '.AppImage';
       return {
-        label: 'Télécharger pour Linux',
         sub: ext + ' — v' + release.version,
         url: linuxAsset?.browser_download_url || '#',
-        icon: <Terminal className="w-5 h-5" />
       };
     }
 
     return {
-      label: 'Télécharger Launched',
       sub: 'v' + (release?.version || ''),
       url: release?.assets?.[0]?.browser_download_url || '#',
-      icon: <Download className="w-5 h-5" />
     };
   };
 
