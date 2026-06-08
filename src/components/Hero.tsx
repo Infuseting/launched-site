@@ -13,10 +13,9 @@ export default function Hero({ release }: { release: GitHubRelease | null }) {
     const assets = release.assets;
 
     if (os === 'windows') {
-      const winAsset = assets.find(a => a.name.endsWith('.exe')) || assets.find(a => a.name.endsWith('.msi'));
-      const ext = winAsset?.name.endsWith('.exe') ? '.exe' : '.msi';
+      const winAsset = assets.find(a => a.name.endsWith('.msi'));
       return {
-        sub: ext + ' — v' + release.version,
+        sub: '.msi — v' + release.version,
         url: winAsset?.browser_download_url || '#',
       };
     } else if (os === 'macos') {
