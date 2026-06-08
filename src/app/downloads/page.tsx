@@ -9,7 +9,7 @@ export default async function DownloadsPage() {
     {
       name: "Windows",
       icon: Monitor,
-      extensions: [".exe", ".msi"],
+      extensions: [".msi"],
       description: "Installeur standard ou package MSI pour Windows 10/11.",
       color: "text-blue-500",
     },
@@ -37,8 +37,8 @@ export default async function DownloadsPage() {
       </div>
 
       <div className="relative z-10 max-w-6xl mx-auto px-6 py-20">
-        <Link 
-          href="/" 
+        <Link
+          href="/"
           className="inline-flex items-center gap-2 text-zinc-400 hover:text-white transition-colors mb-12 group"
         >
           <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
@@ -61,7 +61,7 @@ export default async function DownloadsPage() {
               .filter(item => item.asset);
 
             return (
-              <div 
+              <div
                 key={platform.name}
                 className="glass p-8 rounded-3xl flex flex-col gap-6 hover:border-white/20 transition-all group"
               >
@@ -116,10 +116,10 @@ export default async function DownloadsPage() {
         <div className="mt-20 glass p-8 rounded-3xl border-dashed">
           <h3 className="text-xl font-bold mb-4">Besoin d&apos;aide ?</h3>
           <p className="text-zinc-400 text-sm leading-relaxed max-w-3xl">
-            Si votre système n&apos;est pas répertorié ci-dessus, vous pouvez consulter la liste complète des fichiers sur notre 
+            Si votre système n&apos;est pas répertorié ci-dessus, vous pouvez consulter la liste complète des fichiers sur notre
             <a href="https://github.com/Infuseting/launched/releases" className="text-blue-500 hover:underline ml-1" target="_blank" rel="noopener noreferrer">
               page des releases GitHub
-            </a>. 
+            </a>.
             Tous nos binaires sont signés et vérifiés pour votre sécurité.
           </p>
         </div>
