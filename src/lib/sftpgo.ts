@@ -124,14 +124,24 @@ export async function ensureSessionDirectories(sessionId: string): Promise<void>
   await fs.mkdir(syncDir, { recursive: true });
   await fs.mkdir(assetsDir, { recursive: true });
 
+  // Grant full read/write/traverse access so SFTPGo (non-root UID 1000) can write
+  await fs.chmod(sessionDir, 0o777).catch(() => {});
+  await fs.chmod(syncDir, 0o777).catch(() => {});
+  await fs.chmod(assetsDir, 0o777).catch(() => {});
+  await fs.chown(sessionDir, 1000, 1000).catch(() => {});
+  await fs.chown(syncDir, 1000, 1000).catch(() => {});
+  await fs.chown(assetsDir, 1000, 1000).catch(() => {});
+
   const indexPhpPath = path.join(syncDir, "index.php");
   try {
     await fs.writeFile(indexPhpPath, SYNC_INDEX_PHP_CONTENT, { encoding: "utf8", mode: 0o444 });
+    await fs.chown(indexPhpPath, 1000, 1000).catch(() => {});
   } catch (err: any) {
     if (err.code === "EACCES") {
       await fs.chmod(indexPhpPath, 0o644).catch(() => {});
       await fs.writeFile(indexPhpPath, SYNC_INDEX_PHP_CONTENT, "utf8");
       await fs.chmod(indexPhpPath, 0o444).catch(() => {});
+      await fs.chown(indexPhpPath, 1000, 1000).catch(() => {});
     }
   }
 }
