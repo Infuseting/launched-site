@@ -152,6 +152,7 @@ export async function GET(request: Request) {
     });
 
     const targetUrl = `${origin}/dashboard`;
+    console.log(`[Callback] Success for user ${user.username} (${user.id}). Redirecting to: ${targetUrl}`);
     const response = NextResponse.redirect(targetUrl);
     await setSessionCookie(token, response);
 

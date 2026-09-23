@@ -95,7 +95,10 @@ export default function DashboardPage() {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/dashboard/me');
+      const res = await fetch('/api/dashboard/me', {
+        credentials: 'include',
+        headers: { 'Accept': 'application/json' },
+      });
       if (res.status === 401) {
         setData(null);
         setError(null);
