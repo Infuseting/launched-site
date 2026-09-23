@@ -4,7 +4,7 @@ services:
     container_name: launched_postgres
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       POSTGRES_USER: launched
       POSTGRES_PASSWORD: launched_secret_dev
@@ -25,6 +25,7 @@ services:
       - "2022:2022" # SFTP Port
       - "8080:8080" # WebAdmin & REST API Port
     environment:
+      SFTPGO_DATA_PROVIDER__CREATE_DEFAULT_ADMIN: "true"
       SFTPGO_DEFAULT_ADMIN_USERNAME: admin
       SFTPGO_DEFAULT_ADMIN_PASSWORD: launched_admin_dev
       SFTPGO_HTTPD__BINDINGS__0__PORT: 8080
