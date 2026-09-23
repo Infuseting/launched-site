@@ -1,0 +1,69 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: launched_postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: launched
+      POSTGRES_PASSWORD: launched_secret_dev
+      POSTGRES_DB: launched_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U launched -d launched_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  sftpgo:
+    image: drakkan/sftpgo:v2.6-alpine
+    container_name: launched_sftpgo
+    restart: unless-stopped
+    ports:
+      - "2022:2022" # SFTP Port
+      - "8080:8080" # WebAdmin & REST API Port
+    environment:
+      SFTPGO_DEFAULT_ADMIN_USERNAME: admin
+      SFTPGO_DEFAULT_ADMIN_PASSWORD: launched_admin_dev
+      SFTPGO_HTTPD__BINDINGS__0__PORT: 8080
+      SFTPGO_SFTPD__BINDINGS__0__PORT: 2022
+    volumes:
+      - sftpgo_data:/var/lib/sftpgo
+      - sessions_storage:/srv/sftpgo/sessions
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: launched_web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      sftpgo:
+        condition: service_started
+    environment:
+      DATABASE_URL: "postgresql://launched:launched_secret_dev@postgres:5432/launched_db?schema=public"
+      SFTPGO_API_URL: "http://sftpgo:8080/api/v2"
+      SFTPGO_ADMIN_USER: "admin"
+      SFTPGO_ADMIN_PASSWORD: "launched_admin_dev"
+      SFTPGO_SFTP_HOST: "localhost"
+      SFTPGO_SFTP_PORT: "2022"
+      STORAGE_BASE_DIR: "/srv/sftpgo/sessions"
+      NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+      JWT_SECRET: "launched_dev_jwt_secret_must_be_32_characters_long!"
+      DISCORD_CLIENT_ID: "${DISCORD_CLIENT_ID:-}"
+      DISCORD_CLIENT_SECRET: "${DISCORD_CLIENT_SECRET:-}"
+      DISCORD_REDIRECT_URI: "http://localhost:3000/api/auth/discord/callback"
+      DISCORD_ADMIN_IDS: "${DISCORD_ADMIN_IDS:-}"
+    volumes:
+      - sessions_storage:/srv/sftpgo/sessions
+
+volumes:
+  postgres_data:
+  sftpgo_data:
+  sessions_storage:

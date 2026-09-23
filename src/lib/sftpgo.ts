@@ -3,14 +3,24 @@ import path from "path";
 
 const SFTPGO_API_URL = process.env.SFTPGO_API_URL || "http://127.0.0.1:8080/api/v2";
 const SFTPGO_API_KEY = process.env.SFTPGO_API_KEY || "";
+const SFTPGO_ADMIN_USER = process.env.SFTPGO_ADMIN_USER || "admin";
+const SFTPGO_ADMIN_PASSWORD = process.env.SFTPGO_ADMIN_PASSWORD || "";
 const STORAGE_BASE_DIR = process.env.STORAGE_BASE_DIR || "/srv/sftpgo/sessions";
 
-function getHeaders() {
-  return {
+function getHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    "x-api-key": SFTPGO_API_KEY,
-    "Authorization": `Bearer ${SFTPGO_API_KEY}`,
   };
+
+  if (SFTPGO_API_KEY) {
+    headers["x-api-key"] = SFTPGO_API_KEY;
+    headers["Authorization"] = `Bearer ${SFTPGO_API_KEY}`;
+  } else if (SFTPGO_ADMIN_PASSWORD) {
+    const basicAuth = Buffer.from(`${SFTPGO_ADMIN_USER}:${SFTPGO_ADMIN_PASSWORD}`).toString("base64");
+    headers["Authorization"] = `Basic ${basicAuth}`;
+  }
+
+  return headers;
 }
 
 /**
@@ -36,7 +46,7 @@ export async function ensureSessionDirectories(sessionId: string): Promise<void>
  * Checks if a user exists in SFTPGo.
  */
 export async function sftpUserExists(username: string): Promise<boolean> {
-  if (!SFTPGO_API_KEY) return false;
+  if (!SFTPGO_API_KEY && !SFTPGO_ADMIN_PASSWORD) return false;
   try {
     const res = await fetch(`${SFTPGO_API_URL}/users/${encodeURIComponent(username)}`, {
       method: "GET",
@@ -58,7 +68,7 @@ export async function ensureSftpFolder(sessionId: string, sessionName: string): 
 
   await ensureSessionDirectories(sessionId);
 
-  if (!SFTPGO_API_KEY) return folderName;
+  if (!SFTPGO_API_KEY && !SFTPGO_ADMIN_PASSWORD) return folderName;
 
   try {
     // Check if folder exists
@@ -109,8 +119,8 @@ export async function syncSftpUser(params: {
   diskQuotaBytes: bigint | number;
   sessions: UserSessionMapping[];
 }): Promise<boolean> {
-  if (!SFTPGO_API_KEY) {
-    console.warn("[SFTPGo] No SFTPGO_API_KEY configured. Skipping SFTPGo sync.");
+  if (!SFTPGO_API_KEY && !SFTPGO_ADMIN_PASSWORD) {
+    console.warn("[SFTPGo] No SFTPGO_API_KEY or SFTPGO_ADMIN_PASSWORD configured. Skipping SFTPGo sync.");
     return false;
   }
 
