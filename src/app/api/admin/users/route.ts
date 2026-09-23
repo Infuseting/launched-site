@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     };
   });
 
-  return NextResponse.json({ users: formattedUsers });
+  return NextResponse.json({ currentUserId: user.id, users: formattedUsers });
 }
 
 export async function PUT(request: Request) {
@@ -54,6 +54,13 @@ export async function PUT(request: Request) {
 
   if (!userId) {
     return NextResponse.json({ error: "userId required" }, { status: 400 });
+  }
+
+  if (userId === admin.id && role && role !== "ADMIN") {
+    return NextResponse.json(
+      { error: "Vous ne pouvez pas révoquer vos propres droits administrateur" },
+      { status: 400 }
+    );
   }
 
   try {
