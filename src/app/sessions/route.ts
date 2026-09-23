@@ -3,12 +3,24 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
+function getAppOrigin(request: Request): string {
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, "");
+  if (envUrl && !envUrl.includes("localhost") && !envUrl.includes("127.0.0.1")) {
+    return envUrl;
+  }
+
+  const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
+  const proto = request.headers.get("x-forwarded-proto") || (request.url.startsWith("https") ? "https" : "http");
+  if (host && !host.includes("localhost") && !host.includes("127.0.0.1") && !host.includes("web") && !host.includes("launched_web")) {
+    return `${proto}://${host}`;
+  }
+
+  return envUrl || new URL(request.url).origin;
+}
+
 export async function GET(request: Request) {
   try {
-    const reqOrigin = new URL(request.url).origin;
-    const origin = (reqOrigin.includes("localhost") || reqOrigin.includes("127.0.0.1"))
-      ? reqOrigin
-      : (process.env.NEXT_PUBLIC_APP_URL || reqOrigin);
+    const origin = getAppOrigin(request);
 
     const sessions = await prisma.session.findMany({
       where: { showInLauncher: true },
