@@ -47,20 +47,13 @@ services:
         condition: service_healthy
       sftpgo:
         condition: service_started
+    env_file:
+      - .env.local
     environment:
+      # Surcharges réseau interne Docker (le conteneur web communique directement avec les conteneurs postgres et sftpgo)
       DATABASE_URL: "postgresql://launched:launched_secret_dev@postgres:5432/launched_db?schema=public"
       SFTPGO_API_URL: "http://sftpgo:8080/api/v2"
-      SFTPGO_ADMIN_USER: "admin"
-      SFTPGO_ADMIN_PASSWORD: "launched_admin_dev"
-      SFTPGO_SFTP_HOST: "localhost"
-      SFTPGO_SFTP_PORT: "2022"
       STORAGE_BASE_DIR: "/srv/sftpgo/sessions"
-      NEXT_PUBLIC_APP_URL: "http://localhost:3000"
-      JWT_SECRET: "launched_dev_jwt_secret_must_be_32_characters_long!"
-      DISCORD_CLIENT_ID: "${DISCORD_CLIENT_ID:-}"
-      DISCORD_CLIENT_SECRET: "${DISCORD_CLIENT_SECRET:-}"
-      DISCORD_REDIRECT_URI: "http://localhost:3000/api/auth/discord/callback"
-      DISCORD_ADMIN_IDS: "${DISCORD_ADMIN_IDS:-}"
     volumes:
       - sessions_storage:/srv/sftpgo/sessions
 
