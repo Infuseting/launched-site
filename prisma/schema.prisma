@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  CREATOR
+}
+
+enum SessionRole {
+  OWNER
+  COLLABORATOR
+}
+
+model User {
+  id              String           @id @default(uuid())
+  discordId       String           @unique
+  username        String
+  avatar          String?
+  role            Role             @default(CREATOR)
+  sessionLimit    Int              @default(0)
+  diskQuotaBytes  BigInt           @default(5368709120) // 5 Go par défaut
+  sftpUsername    String?          @unique
+  sftpPassword    String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  sessionMembers  SessionMember[]
+}
+
+model Session {
+  id          String          @id @default(uuid())
+  slug        String          @unique
+  name        String
+  minecraft   String
+  forge       String?
+  fabric      String?
+  neoforge    String?
+  quilt       String?
+  syncDir     String          @default("mods,resourcepacks,shaderpacks")
+  welcome     String          @default("")
+  jvmArg      String          @default("-Xmx4G")
+  credits     String          @default("")
+  hostname    String?
+  crack       Boolean         @default(false)
+  showInLauncher Boolean      @default(true) @map("isActive")
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  members     SessionMember[]
+  links       SessionLink[]
+}
+
+model SessionMember {
+  id        String       @id @default(uuid())
+  userId    String
+  sessionId String
+  role      SessionRole  @default(COLLABORATOR)
+  createdAt DateTime     @default(now())
+
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session   Session      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sessionId])
+}
+
+model SessionLink {
+  id        String   @id @default(uuid())
+  sessionId String
+  name      String
+  url       String
+  icon      String
+
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
