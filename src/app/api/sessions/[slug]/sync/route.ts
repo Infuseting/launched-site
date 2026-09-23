@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
-import { getSessionPhysicalPath } from "@/lib/sftpgo";
+import { getSessionPhysicalPath, ensureSessionDirectories } from "@/lib/sftpgo";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +40,9 @@ async function scanDirectory(
   }
 
   for (const item of items) {
+    if (item === "index.php" || item === ".htaccess") {
+      continue;
+    }
     const fullPath = path.join(dir, item);
     const relPath = path.relative(baseDir, fullPath).replace(/\\/g, "/");
 
@@ -86,13 +89,8 @@ export async function GET(
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
+    await ensureSessionDirectories(session.id);
     const syncRootDir = path.join(getSessionPhysicalPath(session.id), "sync");
-
-    try {
-      await fs.access(syncRootDir);
-    } catch {
-      await fs.mkdir(syncRootDir, { recursive: true });
-    }
 
     const entries: SyncFileEntry[] = [];
     await scanDirectory(syncRootDir, syncRootDir, entries);

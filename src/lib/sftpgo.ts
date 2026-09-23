@@ -57,8 +57,64 @@ export function getSessionPhysicalPath(sessionId: string): string {
   return path.join(STORAGE_BASE_DIR, sessionId);
 }
 
+export const SYNC_INDEX_PHP_CONTENT = `<?php
+ini_set('display_errors', '0');
+
+ini_set('log_errors', '1');
+
+header('Content-Type: application/json; charset=utf-8');
+function ScanDirectory($Directory, $tableau=false){
+    $slash = '';
+        $MyDirectory = opendir($Directory) or die('Erreur');
+        while($Entry = @readdir($MyDirectory)){
+                if($Entry != '.' && $Entry != '..' && $Entry != 'index.php' && $Entry != ".htaccess"){
+                        if(is_dir($Directory.'/'.$Entry)&& $Entry != '.' && $Entry != '..'){
+                                $slash = '/';
+                        }
+            else
+            {
+                $slash = '';
+            }
+                        $tableau[] = substr($Directory.'/'.$Entry, strlen(strstr($Directory.'/'.$Entry, '/', true))+1).$slash;
+                }
+                if(is_dir($Directory.'/'.$Entry)&& $Entry != '.' && $Entry != '..'){
+                        $tableau = ScanDirectory($Directory.'/'.$Entry, $tableau);
+                }
+        }
+        closedir($MyDirectory);
+        return $tableau;
+}
+
+header('Content-type: text/javascript');
+echo '['."\\n";
+$index = 0;
+foreach(ScanDirectory('.') as $key => $value)
+{
+        $stat = stat($value);
+        if($index != 0)
+        {
+                echo ", "."\\n";
+        }
+        echo '    {'."\\n";
+        echo '        "name":"'.htmlentities($value).'",'."\\n";
+        if(is_dir($value)){
+                echo '        "md5":"'.md5($value).'",'."\\n";
+                echo '        "size":"0"'."\\n";
+        }else{
+                echo '        "md5":"'.md5_file($value).'",'."\\n";
+                echo '        "size":"'.$stat['size'].'"'."\\n";
+        }
+        echo '    }';
+        $index++;
+}
+echo "\\n".']';
+
+?>
+`;
+
 /**
- * Ensures physical directories exist for a session (/sync and /assets).
+ * Ensures physical directories exist for a session (/sync and /assets)
+ * and provisions the read-only index.php sync scanner in /sync.
  */
 export async function ensureSessionDirectories(sessionId: string): Promise<void> {
   const sessionDir = getSessionPhysicalPath(sessionId);
@@ -67,6 +123,17 @@ export async function ensureSessionDirectories(sessionId: string): Promise<void>
 
   await fs.mkdir(syncDir, { recursive: true });
   await fs.mkdir(assetsDir, { recursive: true });
+
+  const indexPhpPath = path.join(syncDir, "index.php");
+  try {
+    await fs.writeFile(indexPhpPath, SYNC_INDEX_PHP_CONTENT, { encoding: "utf8", mode: 0o444 });
+  } catch (err: any) {
+    if (err.code === "EACCES") {
+      await fs.chmod(indexPhpPath, 0o644).catch(() => {});
+      await fs.writeFile(indexPhpPath, SYNC_INDEX_PHP_CONTENT, "utf8");
+      await fs.chmod(indexPhpPath, 0o444).catch(() => {});
+    }
+  }
 }
 
 /**
@@ -170,6 +237,16 @@ export async function syncSftpUser(params: {
     status: 1,
     permissions: {
       "/": ["*"],
+    },
+    filters: {
+      file_patterns: [
+        {
+          path: "/",
+          allowed_patterns: [],
+          denied_patterns: ["index.php", ".htaccess"],
+          deny_policy: 1, // 1 = Hide: completely removed from directory listings and denied
+        },
+      ],
     },
     quota_size: Number(diskQuotaBytes),
     virtual_folders: virtualFolders,
