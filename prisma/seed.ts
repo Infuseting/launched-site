@@ -28,7 +28,7 @@ async function main() {
   const session = await prisma.session.upsert({
     where: { slug: "survival-modde" },
     update: {
-      isActive: true,
+      showInLauncher: true,
       name: "Survival Moddé",
       minecraft: "1.20.1",
       forge: null,
@@ -48,7 +48,7 @@ async function main() {
       credits: "Propulsé par Launched",
       hostname: "play.example.com",
       crack: true,
-      isActive: true,
+      showInLauncher: true,
       members: {
         create: {
           userId: user.id,

@@ -19,7 +19,7 @@ export async function GET(
       include: { links: true },
     });
 
-    if (!session || !session.isActive) {
+    if (!session || !session.showInLauncher) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
@@ -78,7 +78,9 @@ export async function GET(
       links: session.links.map((l) => ({
         name: l.name,
         url: l.url,
-        icon: l.icon,
+        icon: l.icon.startsWith("http")
+          ? l.icon
+          : `${origin}${l.icon.startsWith("/") ? "" : "/"}${l.icon}`,
       })),
     };
 

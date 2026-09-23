@@ -8,7 +8,7 @@ export async function GET(request: Request) {
     const origin = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
 
     const sessions = await prisma.session.findMany({
-      where: { isActive: true },
+      where: { showInLauncher: true },
       include: {
         links: true,
       },
@@ -29,13 +29,14 @@ export async function GET(request: Request) {
       jvmArg: s.jvmArg,
       credits: s.credits,
       hostname: s.hostname || undefined,
-      isDefault: false,
       crack: s.crack,
       links: s.links.length > 0
         ? s.links.map((l) => ({
             name: l.name,
             url: l.url,
-            icon: l.icon,
+            icon: l.icon.startsWith("http")
+              ? l.icon
+              : `${origin}${l.icon.startsWith("/") ? "" : "/"}${l.icon}`,
           }))
         : undefined,
     }));

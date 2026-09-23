@@ -48,7 +48,7 @@ model Session {
   credits     String          @default("")
   hostname    String?
   crack       Boolean         @default(false)
-  isActive    Boolean         @default(true)
+  showInLauncher Boolean      @default(true) @map("isActive")
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 

@@ -38,7 +38,8 @@ interface SessionData {
   credits: string;
   hostname?: string | null;
   crack: boolean;
-  isActive: boolean;
+  showInLauncher: boolean;
+  isActive?: boolean;
   myRole: 'OWNER' | 'COLLABORATOR';
   links: LinkItem[];
   members: MemberInfo[];
@@ -92,7 +93,7 @@ export default function DashboardPage() {
     credits: '',
     hostname: '',
     crack: false,
-    isActive: true,
+    showInLauncher: true,
     links: [{ name: 'Discord', url: '', icon: '' }],
   });
 
@@ -261,7 +262,7 @@ export default function DashboardPage() {
       credits: formData.credits,
       hostname: formData.hostname || undefined,
       crack: formData.crack,
-      isActive: formData.isActive,
+      showInLauncher: formData.showInLauncher,
       links: formData.links.filter((l) => l.name && l.url),
     };
 
@@ -375,7 +376,7 @@ export default function DashboardPage() {
       credits: s.credits,
       hostname: s.hostname || '',
       crack: s.crack,
-      isActive: s.isActive ?? true,
+      showInLauncher: s.showInLauncher ?? s.isActive ?? true,
       links: s.links.length > 0 ? s.links : [{ name: 'Discord', url: '', icon: '' }],
     });
     setEditSession(s);
@@ -394,26 +395,27 @@ export default function DashboardPage() {
       credits: `Created by ${data.user.username}`,
       hostname: '',
       crack: false,
-      isActive: true,
+      showInLauncher: true,
       links: [{ name: 'Discord', url: '', icon: '' }],
     });
     setCreateModalOpen(true);
   };
 
-  const handleToggleActive = async (session: SessionData) => {
-    const nextStatus = !session.isActive;
+  const handleToggleShowInLauncher = async (session: SessionData) => {
+    const currentStatus = session.showInLauncher ?? session.isActive ?? true;
+    const nextStatus = !currentStatus;
     try {
       const res = await authFetch(`/api/dashboard/sessions/${session.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive: nextStatus }),
+        body: JSON.stringify({ showInLauncher: nextStatus }),
       });
       if (res.ok) {
         setData((prev) => {
           if (!prev) return null;
           return {
             ...prev,
-            sessions: prev.sessions.map((s) => (s.id === session.id ? { ...s, isActive: nextStatus } : s)),
+            sessions: prev.sessions.map((s) => (s.id === session.id ? { ...s, showInLauncher: nextStatus, isActive: nextStatus } : s)),
           };
         });
       } else {
@@ -714,16 +716,16 @@ export default function DashboardPage() {
                               {isOwner ? 'Propriétaire' : 'Collaborateur'}
                             </span>
                             <button
-                              onClick={() => handleToggleActive(s)}
-                              title={s.isActive ? "Désactiver la session (masquer du launcher)" : "Activer la session (rendre accessible dans le launcher)"}
+                              onClick={() => handleToggleShowInLauncher(s)}
+                              title={(s.showInLauncher ?? s.isActive ?? true) ? "Masquer du launcher" : "Afficher dans le launcher"}
                               className={`text-[10px] font-semibold px-2 py-0.5 rounded border flex items-center gap-1.5 transition ${
-                                s.isActive
+                                (s.showInLauncher ?? s.isActive ?? true)
                                   ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
                                   : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:bg-zinc-700 hover:text-white'
                               }`}
                             >
-                              <span className={`w-1.5 h-1.5 rounded-full ${s.isActive ? 'bg-emerald-400' : 'bg-zinc-500'}`} />
-                              <span>{s.isActive ? 'Actif' : 'Inactif'}</span>
+                              <span className={`w-1.5 h-1.5 rounded-full ${(s.showInLauncher ?? s.isActive ?? true) ? 'bg-emerald-400' : 'bg-zinc-500'}`} />
+                              <span>{(s.showInLauncher ?? s.isActive ?? true) ? 'Affiché dans le launcher' : 'Masqué du launcher'}</span>
                             </button>
                           </div>
                           <div className="text-xs text-zinc-500 font-mono mt-1">
@@ -914,13 +916,13 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2 pt-1">
                 <input
                   type="checkbox"
-                  id="isActiveCheckbox"
-                  checked={formData.isActive}
-                  onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                  id="showInLauncherCheckbox"
+                  checked={formData.showInLauncher}
+                  onChange={(e) => setFormData({ ...formData, showInLauncher: e.target.checked })}
                   className="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-0"
                 />
-                <label htmlFor="isActiveCheckbox" className="text-zinc-300 font-medium">
-                  Session active (accessible et visible dans le launcher)
+                <label htmlFor="showInLauncherCheckbox" className="text-zinc-300 font-medium">
+                  Afficher dans le launcher (accessible et téléchargeable pour les joueurs)
                 </label>
               </div>
 

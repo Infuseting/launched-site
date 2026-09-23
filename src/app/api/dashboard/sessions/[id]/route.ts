@@ -42,9 +42,14 @@ export async function PUT(
     credits,
     hostname,
     crack,
+    showInLauncher,
     isActive,
     links,
   } = body;
+
+  const targetShow = showInLauncher !== undefined 
+    ? Boolean(showInLauncher) 
+    : (isActive !== undefined ? Boolean(isActive) : undefined);
 
   try {
     const updated = await prisma.session.update({
@@ -62,7 +67,7 @@ export async function PUT(
         ...(credits !== undefined ? { credits: credits.trim() } : {}),
         hostname: hostname !== undefined ? (hostname ? hostname.trim() : null) : undefined,
         ...(crack !== undefined ? { crack: Boolean(crack) } : {}),
-        ...(isActive !== undefined ? { isActive: Boolean(isActive) } : {}),
+        ...(targetShow !== undefined ? { showInLauncher: targetShow } : {}),
       },
     });
 

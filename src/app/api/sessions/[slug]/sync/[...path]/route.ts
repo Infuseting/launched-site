@@ -15,10 +15,10 @@ export async function GET(
   try {
     const session = await prisma.session.findUnique({
       where: { slug },
-      select: { id: true, isActive: true },
+      select: { id: true, showInLauncher: true },
     });
 
-    if (!session || !session.isActive) {
+    if (!session || !session.showInLauncher) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
