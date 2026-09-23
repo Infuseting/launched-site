@@ -155,9 +155,11 @@ export async function GET(request: Request) {
       role: user.role,
     });
 
-    await setSessionCookie(token);
+    const targetUrl = `${origin}/dashboard`;
+    const response = NextResponse.redirect(targetUrl);
+    await setSessionCookie(token, response);
 
-    return NextResponse.redirect(`${origin}/dashboard`);
+    return response;
   } catch (err) {
     console.error("[Discord OAuth] Callback error:", err);
     return NextResponse.redirect(`${origin}/?error=server_error`);

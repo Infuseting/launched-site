@@ -15,12 +15,12 @@ export default function Hero({ release }: { release: GitHubRelease | null }) {
     if (os === 'windows') {
       const winAsset = assets.find(a => a.name.endsWith('.msi'));
       return {
-        sub: '.msi — v' + release.version,
+        sub: '.msi — ' + release.version,
         url: winAsset?.browser_download_url || '#',
       };
     } else if (os === 'macos') {
       return {
-        sub: '.dmg — v' + release.version,
+        sub: '.dmg — ' + release.version,
         url: assets.find(a => a.name.endsWith('.dmg'))?.browser_download_url || '#',
       };
     } else if (os === 'linux') {
@@ -31,13 +31,13 @@ export default function Hero({ release }: { release: GitHubRelease | null }) {
         linuxAsset?.name.endsWith('.deb') ? '.deb' :
           linuxAsset?.name.endsWith('.rpm') ? '.rpm' : '.AppImage';
       return {
-        sub: ext + ' — v' + release.version,
+        sub: ext + ' — ' + release.version,
         url: linuxAsset?.browser_download_url || '#',
       };
     }
 
     return {
-      sub: 'v' + (release?.version || ''),
+      sub: (release?.version || ''),
       url: release?.assets?.[0]?.browser_download_url || '#',
     };
   };

@@ -23,10 +23,16 @@ export async function GET(request: Request) {
 
   const response = NextResponse.redirect(discordAuthUrl);
 
+  const isLocalhost =
+    (process.env.NEXT_PUBLIC_APP_URL || "").includes("localhost") ||
+    (process.env.NEXT_PUBLIC_APP_URL || "").includes("127.0.0.1") ||
+    origin.includes("localhost") ||
+    origin.includes("127.0.0.1");
+
   // Store state in a short-lived secure HttpOnly cookie (10 minutes)
   response.cookies.set("oauth_state", state, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: process.env.NODE_ENV === "production" && !isLocalhost,
     sameSite: "lax",
     path: "/",
     maxAge: 10 * 60, // 10 minutes

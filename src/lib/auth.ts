@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import { prisma } from "./prisma";
 
 import crypto from "crypto";
@@ -149,23 +150,37 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
 /**
  * Sets session cookie.
  */
-export async function setSessionCookie(token: string) {
-  const cookieStore = await cookies();
-  cookieStore.set(COOKIE_NAME, token, {
+export async function setSessionCookie(token: string, response?: NextResponse) {
+  const isLocalhost =
+    (process.env.NEXT_PUBLIC_APP_URL || "").includes("localhost") ||
+    (process.env.NEXT_PUBLIC_APP_URL || "").includes("127.0.0.1");
+
+  const cookieOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production" && !isLocalhost,
+    sameSite: "lax" as const,
     path: "/",
     maxAge: 30 * 24 * 3600,
-  });
+  };
+
+  if (response) {
+    response.cookies.set(COOKIE_NAME, token, cookieOptions);
+  } else {
+    const cookieStore = await cookies();
+    cookieStore.set(COOKIE_NAME, token, cookieOptions);
+  }
 }
 
 /**
  * Removes session cookie.
  */
-export async function clearSessionCookie() {
-  const cookieStore = await cookies();
-  cookieStore.delete(COOKIE_NAME);
+export async function clearSessionCookie(response?: NextResponse) {
+  if (response) {
+    response.cookies.delete(COOKIE_NAME);
+  } else {
+    const cookieStore = await cookies();
+    cookieStore.delete(COOKIE_NAME);
+  }
 }
 
 /**
