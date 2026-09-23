@@ -97,7 +97,8 @@ export default function DashboardPage() {
       setLoading(true);
       const res = await fetch('/api/dashboard/me');
       if (res.status === 401) {
-        window.location.href = '/api/auth/discord/login';
+        setData(null);
+        setError(null);
         return;
       }
       if (!res.ok) throw new Error('Erreur lors du chargement');

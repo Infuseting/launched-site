@@ -173,13 +173,11 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
  * Sets session cookie.
  */
 export async function setSessionCookie(token: string, response?: NextResponse) {
-  const isLocalhost =
-    (process.env.NEXT_PUBLIC_APP_URL || "").includes("localhost") ||
-    (process.env.NEXT_PUBLIC_APP_URL || "").includes("127.0.0.1");
+  const isHttps = process.env.NEXT_PUBLIC_APP_URL?.startsWith("https://") ?? false;
 
   const cookieOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production" && !isLocalhost,
+    secure: isHttps,
     sameSite: "lax" as const,
     path: "/",
     maxAge: 30 * 24 * 3600,
@@ -187,9 +185,12 @@ export async function setSessionCookie(token: string, response?: NextResponse) {
 
   if (response) {
     response.cookies.set(COOKIE_NAME, token, cookieOptions);
-  } else {
+  }
+  try {
     const cookieStore = await cookies();
     cookieStore.set(COOKIE_NAME, token, cookieOptions);
+  } catch {
+    // Ignore if not supported in current context
   }
 }
 
