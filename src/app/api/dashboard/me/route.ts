@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   const cookieStore = await cookies();
   const allCookies = cookieStore.getAll();
   console.log("[dashboard/me] Host:", request.headers.get("host"), "Cookies:", allCookies.map((c) => c.name));
-  const user = await getCurrentUser();
+  const user = await getCurrentUser(request);
   console.log("[dashboard/me] user found:", user ? user.username : "null");
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

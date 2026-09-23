@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { syncSftpUser } from "@/lib/sftpgo";
 
 export async function POST(request: Request) {
-  const user = await getCurrentUser();
+  const user = await getCurrentUser(request);
   if (!user || !user.sftpUsername) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

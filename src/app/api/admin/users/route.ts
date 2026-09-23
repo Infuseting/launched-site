@@ -5,8 +5,8 @@ import { syncSftpUser } from "@/lib/sftpgo";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const user = await getCurrentUser();
+export async function GET(request: Request) {
+  const user = await getCurrentUser(request);
   if (!user || user.role !== "ADMIN") {
     return NextResponse.json({ error: "Forbidden: Admin required" }, { status: 403 });
   }
@@ -44,7 +44,7 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
-  const admin = await getCurrentUser();
+  const admin = await getCurrentUser(request);
   if (!admin || admin.role !== "ADMIN") {
     return NextResponse.json({ error: "Forbidden: Admin required" }, { status: 403 });
   }

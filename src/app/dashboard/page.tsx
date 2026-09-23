@@ -92,11 +92,45 @@ export default function DashboardPage() {
   const [collabError, setCollabError] = useState<string | null>(null);
   const [transferUserId, setTransferUserId] = useState('');
 
+  const getStoredToken = () => {
+    if (typeof window === 'undefined') return null;
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokenFromUrl = urlParams.get('token');
+    if (tokenFromUrl) {
+      try {
+        localStorage.setItem('launched_token', tokenFromUrl);
+        document.cookie = `launched_session=${tokenFromUrl}; path=/; max-age=${30 * 24 * 3600}; SameSite=Lax`;
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, '', cleanUrl);
+      } catch (e) {
+        console.error('Error storing token:', e);
+      }
+      return tokenFromUrl;
+    }
+    return localStorage.getItem('launched_token');
+  };
+
+  const authFetch = async (url: string, options: RequestInit = {}) => {
+    const token = getStoredToken();
+    const headers = new Headers(options.headers || {});
+    if (token && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+    const res = await fetch(url, {
+      ...options,
+      credentials: 'include',
+      headers,
+    });
+    if (res.status === 401 && typeof window !== 'undefined') {
+      localStorage.removeItem('launched_token');
+    }
+    return res;
+  };
+
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/dashboard/me', {
-        credentials: 'include',
+      const res = await authFetch('/api/dashboard/me', {
         headers: { 'Accept': 'application/json' },
       });
       if (res.status === 401) {
@@ -128,7 +162,7 @@ export default function DashboardPage() {
     if (!confirm('Régénérer votre mot de passe SFTP ?')) return;
     setRegeneratingPassword(true);
     try {
-      const res = await fetch('/api/dashboard/password', { method: 'POST' });
+      const res = await authFetch('/api/dashboard/password', { method: 'POST' });
       const json = await res.json();
       if (json.success && data) {
         setData({
@@ -163,7 +197,7 @@ export default function DashboardPage() {
     };
 
     if (editSession) {
-      const res = await fetch(`/api/dashboard/sessions/${editSession.id}`, {
+      const res = await authFetch(`/api/dashboard/sessions/${editSession.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -176,7 +210,7 @@ export default function DashboardPage() {
         alert(err.error || 'Erreur lors de la mise à jour');
       }
     } else {
-      const res = await fetch('/api/dashboard/sessions', {
+      const res = await authFetch('/api/dashboard/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -193,7 +227,7 @@ export default function DashboardPage() {
 
   const handleDeleteSession = async (session: SessionData) => {
     if (!confirm(`Supprimer définitivement la session "${session.name}" et ses fichiers ?`)) return;
-    const res = await fetch(`/api/dashboard/sessions/${session.id}`, { method: 'DELETE' });
+    const res = await authFetch(`/api/dashboard/sessions/${session.id}`, { method: 'DELETE' });
     if (res.ok) {
       fetchDashboardData();
     } else {
@@ -207,7 +241,7 @@ export default function DashboardPage() {
     if (!collaboratorSession || !collabUsername.trim()) return;
     setCollabError(null);
 
-    const res = await fetch(`/api/dashboard/sessions/${collaboratorSession.id}/collaborators`, {
+    const res = await authFetch(`/api/dashboard/sessions/${collaboratorSession.id}/collaborators`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: collabUsername }),
@@ -226,7 +260,7 @@ export default function DashboardPage() {
     if (!collaboratorSession) return;
     if (!confirm('Retirer ce collaborateur ?')) return;
 
-    const res = await fetch(`/api/dashboard/sessions/${collaboratorSession.id}/collaborators?userId=${userId}`, {
+    const res = await authFetch(`/api/dashboard/sessions/${collaboratorSession.id}/collaborators?userId=${userId}`, {
       method: 'DELETE',
     });
     if (res.ok) {
@@ -238,7 +272,7 @@ export default function DashboardPage() {
     if (!collaboratorSession || !transferUserId) return;
     if (!confirm('Transférer la possession de cette session ? Vous deviendrez collaborateur et la session sera décomptée de son quota.')) return;
 
-    const res = await fetch(`/api/dashboard/sessions/${collaboratorSession.id}/transfer`, {
+    const res = await authFetch(`/api/dashboard/sessions/${collaboratorSession.id}/transfer`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ newOwnerId: transferUserId }),
@@ -332,7 +366,16 @@ export default function DashboardPage() {
             <span className="text-xs font-bold text-zinc-200">{user.username}</span>
           </div>
 
-          <a href="/api/auth/logout" title="Déconnexion" className="text-zinc-500 hover:text-white transition">
+          <a
+            href="/api/auth/logout"
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                localStorage.removeItem("launched_token");
+              }
+            }}
+            title="Déconnexion"
+            className="text-zinc-500 hover:text-white transition"
+          >
             <LogOut className="w-4 h-4" />
           </a>
         </div>

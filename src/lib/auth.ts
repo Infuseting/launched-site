@@ -208,10 +208,37 @@ export async function clearSessionCookie(response?: NextResponse) {
 
 /**
  * Retrieves the current authenticated user from database.
+ * Accepts a Request, an explicit token string, or falls back to cookies.
  */
-export async function getCurrentUser() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(COOKIE_NAME)?.value;
+export async function getCurrentUser(requestOrToken?: Request | string | null) {
+  let token: string | null | undefined = null;
+
+  if (typeof requestOrToken === "string") {
+    token = requestOrToken;
+  } else if (requestOrToken && typeof (requestOrToken as Request).headers?.get === "function") {
+    const req = requestOrToken as Request;
+    const authHeader = req.headers.get("authorization");
+    if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
+      token = authHeader.substring(7).trim();
+    }
+    if (!token) {
+      const cookieHeader = req.headers.get("cookie") || "";
+      const match = cookieHeader.match(/(?:^|;\s*)launched_session=([^;]+)/);
+      if (match) {
+        token = decodeURIComponent(match[1]);
+      }
+    }
+  }
+
+  if (!token) {
+    try {
+      const cookieStore = await cookies();
+      token = cookieStore.get(COOKIE_NAME)?.value;
+    } catch {
+      // Ignore if not supported in current context
+    }
+  }
+
   if (!token) return null;
 
   const payload = await verifySessionToken(token);

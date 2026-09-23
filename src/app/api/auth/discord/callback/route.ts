@@ -151,8 +151,12 @@ export async function GET(request: Request) {
       role: user.role,
     });
 
-    const targetUrl = `${origin}/dashboard`;
-    console.log(`[Callback] Success for user ${user.username} (${user.id}). Redirecting to: ${targetUrl}`);
+    const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
+    const proto = request.headers.get("x-forwarded-proto") || (request.url.startsWith("https") ? "https" : "http");
+    const baseOrigin = host ? `${proto}://${host}` : origin;
+    const targetUrl = new URL("/dashboard", baseOrigin);
+    targetUrl.searchParams.set("token", token);
+    console.log(`[Callback] Success for user ${user.username} (${user.id}). Redirecting to: ${targetUrl.toString()}`);
     const response = NextResponse.redirect(targetUrl);
     await setSessionCookie(token, response);
 
