@@ -33,16 +33,10 @@ export default function Navbar() {
       <nav className="flex items-center gap-8 text-[11px] font-bold tracking-[0.15em] uppercase text-zinc-400">
         <a href="/#features" className="hover:text-white transition-colors">Fonctionnalités</a>
         <Link href="/downloads" className="hover:text-white transition-colors">Téléchargement</Link>
-        <Link 
-          href="/dashboard" 
-          className="text-white hover:text-blue-400 transition-colors flex items-center gap-2 font-medium normal-case tracking-normal text-xs"
-        >
-          {user?.avatar && (
-            <img src={user.avatar} alt="" className="w-5 h-5 rounded-full border border-white/10" />
-          )}
-          <span>{user ? 'Mon Espace' : 'Espace Créateur'}</span>
-        </Link>
         <a href="https://discord.gg/kfzyScBSqS" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Discord</a>
+        <Link href="/dashboard" className="hover:text-white transition-colors">
+          {user ? 'Mon Espace' : 'Espace Créateur'}
+        </Link>
       </nav>
     </header>
   );

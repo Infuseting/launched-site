@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   // Generate cryptographically signed anti-CSRF state token
   const state = createOAuthState();
 
-  const scope = encodeURIComponent("identify");
+  const scope = encodeURIComponent("identify guilds");
   const encodedRedirect = encodeURIComponent(redirectUri);
 
   const discordAuthUrl = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodedRedirect}&response_type=code&scope=${scope}&state=${state}`;

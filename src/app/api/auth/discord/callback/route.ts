@@ -80,6 +80,32 @@ export async function GET(request: Request) {
 
     const isAdmin = isDiscordAdmin(discordId);
 
+    // Verify user is a member of the Launched Discord server
+    const requiredGuildId = process.env.DISCORD_GUILD_ID || "1496947207847411965";
+    const guildsRes = await fetch("https://discord.com/api/users/@me/guilds", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    let isInGuild = false;
+    if (guildsRes.ok) {
+      const guilds = await guildsRes.json();
+      if (Array.isArray(guilds)) {
+        isInGuild = guilds.some((g: { id: string }) => g.id === requiredGuildId);
+      }
+    } else {
+      console.error("[Discord OAuth] Failed to fetch user guilds:", await guildsRes.text());
+    }
+
+    if (!isInGuild && !isAdmin) {
+      console.warn(`[Discord OAuth] User ${username} (${discordId}) is not in guild ${requiredGuildId}`);
+      const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
+      const proto = request.headers.get("x-forwarded-proto") || (request.url.startsWith("https") ? "https" : "http");
+      const baseOrigin = host ? `${proto}://${host}` : origin;
+      return NextResponse.redirect(`${baseOrigin}/dashboard?error=not_in_guild`);
+    }
+
     // 3. Find or create user
     let user = await prisma.user.findUnique({
       where: { discordId },
