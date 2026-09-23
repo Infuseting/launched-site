@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import crypto from "crypto";
+import { createOAuthState } from "@/lib/auth";
 
 export async function GET(request: Request) {
   const clientId = process.env.DISCORD_CLIENT_ID;
@@ -13,8 +13,8 @@ export async function GET(request: Request) {
     );
   }
 
-  // Generate cryptographically secure anti-CSRF state token
-  const state = crypto.randomBytes(32).toString("hex");
+  // Generate cryptographically signed anti-CSRF state token
+  const state = createOAuthState();
 
   const scope = encodeURIComponent("identify");
   const encodedRedirect = encodeURIComponent(redirectUri);

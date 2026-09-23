@@ -60,6 +60,40 @@ export function decryptSecret(cipherData: string): string {
   }
 }
 
+/**
+ * Generates a signed, stateless anti-CSRF OAuth state token (RFC 6749 / RFC 9700).
+ * Format: <timestamp>.<randomNonce>.<hmacSignature>
+ */
+export function createOAuthState(): string {
+  const timestamp = Date.now().toString();
+  const nonce = crypto.randomBytes(16).toString("hex");
+  const payload = `${timestamp}.${nonce}`;
+  const hmac = crypto.createHmac("sha256", getJwtSecret()).update(payload).digest("base64url");
+  return `${payload}.${hmac}`;
+}
+
+/**
+ * Cryptographically verifies a signed OAuth state token.
+ * Validates HMAC authenticity and checks expiration (15 minutes).
+ */
+export function verifyOAuthState(state: string | null): boolean {
+  if (!state) return false;
+  const parts = state.split(".");
+  if (parts.length !== 3) return false;
+
+  const [timestampStr, nonce, hmac] = parts;
+  const timestamp = parseInt(timestampStr, 10);
+  if (isNaN(timestamp) || Date.now() - timestamp > 15 * 60 * 1000 || timestamp > Date.now() + 60000) {
+    return false; // Expired or invalid timestamp
+  }
+
+  const payload = `${timestampStr}.${nonce}`;
+  const expectedHmac = crypto.createHmac("sha256", getJwtSecret()).update(payload).digest("base64url");
+
+  if (hmac.length !== expectedHmac.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(expectedHmac));
+}
+
 // Base64URL encoding/decoding
 function base64UrlEncode(str: string): string {
   return Buffer.from(str, "utf8").toString("base64url");

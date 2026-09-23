@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
-import { createSessionToken, setSessionCookie, isDiscordAdmin } from "@/lib/auth";
+import { createSessionToken, setSessionCookie, isDiscordAdmin, verifyOAuthState } from "@/lib/auth";
 import { syncSftpUser } from "@/lib/sftpgo";
 
 export async function GET(request: Request) {
@@ -14,21 +14,17 @@ export async function GET(request: Request) {
   const cookieStore = await cookies();
   const savedState = cookieStore.get("oauth_state")?.value;
 
-  // Clear state cookie immediately
+  // Clear state cookie
   cookieStore.delete("oauth_state");
 
   if (!code) {
     return NextResponse.redirect(`${origin}/?error=missing_code`);
   }
 
-  // Anti-CSRF verification
-  if (!state || !savedState || state.length !== savedState.length) {
-    return NextResponse.redirect(`${origin}/?error=invalid_csrf_state`);
-  }
-
-  const stateBuffer = Buffer.from(state);
-  const savedStateBuffer = Buffer.from(savedState);
-  if (!crypto.timingSafeEqual(stateBuffer, savedStateBuffer)) {
+  // Anti-CSRF verification: signed HMAC state or cookie fallback
+  const isStateValid = verifyOAuthState(state) || Boolean(savedState && state && state === savedState);
+  if (!isStateValid) {
+    console.warn(`[Discord OAuth] CSRF state verification failed. state: ${state}, savedState: ${savedState}`);
     return NextResponse.redirect(`${origin}/?error=invalid_csrf_state`);
   }
 
