@@ -68,7 +68,11 @@ export default function DashboardPage() {
   // SFTP state
   const [showPassword, setShowPassword] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [regeneratingPassword, setRegeneratingPassword] = useState(false);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [newSftpPassword, setNewSftpPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccessToast, setPasswordSuccessToast] = useState<string | null>(null);
 
   // Modals
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -174,23 +178,69 @@ export default function DashboardPage() {
     copyToClipboard(fullText, 'all');
   };
 
-  const handleRegeneratePassword = async () => {
-    if (!confirm('Régénérer votre mot de passe SFTP ?')) return;
-    setRegeneratingPassword(true);
-    try {
-      const res = await authFetch('/api/dashboard/password', { method: 'POST' });
-      const json = await res.json();
-      if (json.success && data) {
-        setData({
-          ...data,
-          user: {
-            ...data.user,
-            sftp: { ...data.user.sftp, password: json.sftpPassword },
-          },
-        });
+  const generateRandomPassword = () => {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+    let result = '';
+    const randomValues = new Uint32Array(16);
+    if (typeof window !== 'undefined' && window.crypto) {
+      window.crypto.getRandomValues(randomValues);
+      for (let i = 0; i < 16; i++) {
+        result += chars[randomValues[i] % chars.length];
       }
+    } else {
+      result = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8);
+    }
+    setNewSftpPassword(result);
+  };
+
+  const handleUpdatePassword = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setPasswordLoading(true);
+    setPasswordError(null);
+    try {
+      const payload: { password?: string } = {};
+      if (newSftpPassword.trim()) {
+        if (newSftpPassword.trim().length < 6) {
+          setPasswordError('Le mot de passe doit comporter au moins 6 caractères');
+          setPasswordLoading(false);
+          return;
+        }
+        payload.password = newSftpPassword.trim();
+      }
+
+      const res = await authFetch('/api/dashboard/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'Erreur lors de la mise à jour du mot de passe');
+      }
+
+      setData((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          user: {
+            ...prev.user,
+            sftp: { ...prev.user.sftp, password: json.sftpPassword },
+          },
+        };
+      });
+
+      setShowPassword(true);
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        navigator.clipboard.writeText(json.sftpPassword).catch(() => {});
+      }
+      setPasswordModalOpen(false);
+      setNewSftpPassword('');
+      setPasswordSuccessToast('Mot de passe SFTP mis à jour et copié dans le presse-papier !');
+      setTimeout(() => setPasswordSuccessToast(null), 5000);
+    } catch (err: any) {
+      setPasswordError(err.message || 'Impossible de mettre à jour le mot de passe');
     } finally {
-      setRegeneratingPassword(false);
+      setPasswordLoading(false);
     }
   };
 
@@ -499,7 +549,7 @@ export default function DashboardPage() {
         {/* SFTP Credentials Bar */}
         {user.sftp.username && (
           <section className="bg-zinc-950 border border-white/10 rounded-xl p-5 space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <Key className="w-4 h-4 text-blue-400" />
                 <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-300">Identifiants SFTP</h2>
@@ -513,16 +563,34 @@ export default function DashboardPage() {
                   <span>Copier tout</span>
                 </button>
                 <button
-                  onClick={handleRegeneratePassword}
-                  disabled={regeneratingPassword}
-                  className="text-xs text-zinc-400 hover:text-white px-2.5 py-1.5 transition flex items-center gap-1.5"
-                  title="Générer un nouveau mot de passe"
+                  onClick={() => {
+                    setPasswordError(null);
+                    setNewSftpPassword('');
+                    setPasswordModalOpen(true);
+                  }}
+                  className="text-xs bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/20 px-3 py-1.5 rounded-md transition flex items-center gap-1.5"
+                  title="Modifier ou régénérer le mot de passe SFTP"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${regeneratingPassword ? 'animate-spin' : ''}`} />
-                  <span>Régénérer mot de passe</span>
+                  <Key className="w-3.5 h-3.5" />
+                  <span>Modifier mot de passe</span>
                 </button>
               </div>
             </div>
+
+            {passwordSuccessToast && (
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 text-xs text-blue-300 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-blue-400 shrink-0" />
+                  <span>{passwordSuccessToast}</span>
+                </div>
+                <button
+                  onClick={() => setPasswordSuccessToast(null)}
+                  className="text-blue-400 hover:text-white text-xs ml-4"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
               <div className="bg-white/[0.02] border border-white/5 rounded-lg p-3">
@@ -538,18 +606,27 @@ export default function DashboardPage() {
                 <div className="text-white mt-1 select-all">{user.sftp.username}</div>
               </div>
               <div className="bg-white/[0.02] border border-white/5 rounded-lg p-3 flex items-center justify-between">
-                <div>
+                <div className="min-w-0 pr-2">
                   <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-sans font-medium">Mot de passe</div>
-                  <div className="text-white mt-1 select-all">
+                  <div className="text-white mt-1 select-all font-mono truncate">
                     {showPassword ? user.sftp.password : '••••••••'}
                   </div>
                 </div>
-                <button
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="text-[10px] text-zinc-400 hover:text-white font-sans"
-                >
-                  {showPassword ? 'Masquer' : 'Voir'}
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => copyToClipboard(user.sftp.password, 'pwd')}
+                    className="p-1 rounded text-zinc-400 hover:text-white hover:bg-white/5 transition"
+                    title="Copier le mot de passe"
+                  >
+                    {copiedKey === 'pwd' ? <Check className="w-3.5 h-3.5 text-blue-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                  <button
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="text-[10px] text-zinc-400 hover:text-white font-sans px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 transition"
+                  >
+                    {showPassword ? 'Masquer' : 'Voir'}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1001,6 +1078,91 @@ export default function DashboardPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal SFTP Password */}
+      {passwordModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-zinc-950 border border-white/10 rounded-xl max-w-md w-full p-6 space-y-4 text-xs">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <Key className="w-4 h-4 text-blue-500" />
+                <h2 className="text-base font-bold text-white">Mot de passe SFTP</h2>
+              </div>
+              <button
+                onClick={() => setPasswordModalOpen(false)}
+                className="text-zinc-500 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-zinc-400 leading-relaxed">
+              Définissez un mot de passe personnalisé pour vos connexions SFTP (minimum 6 caractères) ou générez-en un automatiquement.
+            </p>
+
+            <form onSubmit={handleUpdatePassword} className="space-y-4">
+              <div>
+                <label className="block text-zinc-400 font-medium mb-1.5">
+                  Nouveau mot de passe
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={newSftpPassword}
+                    onChange={(e) => setNewSftpPassword(e.target.value)}
+                    placeholder="Entrez un mot de passe ou laissez vide pour auto-générer..."
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500 pr-10"
+                  />
+                  {newSftpPassword && (
+                    <button
+                      type="button"
+                      onClick={() => setNewSftpPassword('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={generateRandomPassword}
+                  className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1.5 transition font-sans"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Générer un mot de passe aléatoire</span>
+                </button>
+              </div>
+
+              {passwordError && (
+                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-xs">
+                  {passwordError}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setPasswordModalOpen(false)}
+                  className="px-4 py-2 text-zinc-400 hover:text-white transition"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={passwordLoading}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg flex items-center gap-2 transition disabled:opacity-50"
+                >
+                  {passwordLoading && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{newSftpPassword.trim() ? 'Enregistrer' : 'Générer automatiquement'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

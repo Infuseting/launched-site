@@ -161,6 +161,7 @@ export async function syncSftpUser(params: {
       name: folderName,
       virtual_path: `/${s.slug}`,
       quota_size: -1,
+      quota_files: -1,
     });
   }
 
@@ -186,7 +187,11 @@ export async function syncSftpUser(params: {
         headers: await getHeaders(),
         body: JSON.stringify(userPayload),
       });
-      return res.ok;
+      if (!res.ok) {
+        console.error(`[SFTPGo] Failed to update user ${username} (HTTP ${res.status}):`, await res.text());
+        return false;
+      }
+      return true;
     } else {
       // Must have a password to create
       if (!password) {
@@ -197,7 +202,11 @@ export async function syncSftpUser(params: {
         headers: await getHeaders(),
         body: JSON.stringify(userPayload),
       });
-      return res.ok;
+      if (!res.ok) {
+        console.error(`[SFTPGo] Failed to create user ${username} (HTTP ${res.status}):`, await res.text());
+        return false;
+      }
+      return true;
     }
   } catch (err) {
     console.error(`[SFTPGo] Failed to sync user ${username}:`, err);
