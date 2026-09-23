@@ -62,19 +62,11 @@ export function decryptSecret(cipherData: string): string {
 
 // Base64URL encoding/decoding
 function base64UrlEncode(str: string): string {
-  return Buffer.from(str)
-    .toString("base64")
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
+  return Buffer.from(str, "utf8").toString("base64url");
 }
 
 function base64UrlDecode(str: string): string {
-  let base64 = str.replace(/-/g, "+").replace(/_/g, "/");
-  while (base64.length % 4) {
-    base64 += "=";
-  }
-  return Buffer.from(base64, "base64").toString();
+  return Buffer.from(str, "base64url").toString("utf8");
 }
 
 async function getCryptoKey(): Promise<CryptoKey> {
@@ -104,9 +96,7 @@ export async function createSessionToken(payload: Omit<SessionPayload, "exp">): 
 
   const key = await getCryptoKey();
   const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data));
-  const encodedSignature = base64UrlEncode(
-    String.fromCharCode(...new Uint8Array(signature))
-  );
+  const encodedSignature = Buffer.from(signature).toString("base64url");
 
   return `${data}.${encodedSignature}`;
 }
@@ -123,9 +113,7 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
     const data = `${encodedHeader}.${encodedPayload}`;
 
     const key = await getCryptoKey();
-    const signatureBytes = Uint8Array.from(
-      Buffer.from(encodedSignature.replace(/-/g, "+").replace(/_/g, "/"), "base64")
-    );
+    const signatureBytes = Buffer.from(encodedSignature, "base64url");
 
     const isValid = await crypto.subtle.verify(
       "HMAC",
