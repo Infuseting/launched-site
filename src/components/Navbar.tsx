@@ -9,6 +9,7 @@ export default function Navbar() {
       <nav className="flex items-center gap-8 text-[10px] font-bold tracking-[0.2em] uppercase text-zinc-500">
         <a href="#features" className="hover:text-white transition-colors">Fonctionnalités</a>
         <Link href="/downloads" className="hover:text-white transition-colors">Versions</Link>
+        <Link href="/dashboard" className="text-emerald-400 hover:text-emerald-300 transition-colors">Espace Créateur</Link>
         <a href="https://discord.gg/kfzyScBSqS" className="hover:text-white transition-colors">Discord</a>
       </nav>
     </header>
