@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createOAuthState } from "@/lib/auth";
 
 export async function GET(request: Request) {
-  const clientId = process.env.DISCORD_CLIENT_ID;
+  const clientId = process.env.DISCORD_CLIENT_ID?.replace(/^[|"'\s]+|[|"'\s]+$/g, "");
   const origin = new URL(request.url).origin;
   const redirectUri = process.env.DISCORD_REDIRECT_URI || `${origin}/api/auth/discord/callback`;
 

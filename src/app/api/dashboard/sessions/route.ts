@@ -1,12 +1,32 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { syncSftpUser, ensureSessionDirectories } from "@/lib/sftpgo";
 
 export async function POST(request: Request) {
-  const user = await getCurrentUser(request);
+  let user = await getCurrentUser(request);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Auto-provision SFTP credentials if missing
+  if (!user.sftpUsername || !user.sftpPassword || user.sftpPassword === "dummy-encrypted-password") {
+    const cleanUsername = user.username.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 10);
+    const sftpUsername = user.sftpUsername || `u_${cleanUsername || "creator"}_${user.discordId.slice(-4)}`;
+    const sftpPassword = (user.sftpPassword && user.sftpPassword !== "dummy-encrypted-password")
+      ? user.sftpPassword
+      : crypto.randomBytes(8).toString("hex");
+
+    user = await prisma.user.update({
+      where: { id: user.id },
+      data: { sftpUsername, sftpPassword },
+      include: {
+        sessionMembers: {
+          include: { session: true },
+        },
+      },
+    });
   }
 
   // Verify session quota

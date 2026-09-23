@@ -11,7 +11,10 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
-  const origin = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
+  const reqOrigin = new URL(request.url).origin;
+  const origin = (reqOrigin.includes("localhost") || reqOrigin.includes("127.0.0.1"))
+    ? reqOrigin
+    : (process.env.NEXT_PUBLIC_APP_URL || reqOrigin);
 
   try {
     const session = await prisma.session.findUnique({

@@ -58,7 +58,7 @@ interface DashboardUser {
     port: string;
     username: string;
     password: string;
-  };
+  } | null;
 }
 
 export default function DashboardPage() {
@@ -177,6 +177,7 @@ export default function DashboardPage() {
   const handleCopyAllSftp = () => {
     if (!data) return;
     const { sftp } = data.user;
+    if (!sftp) return;
     const fullText = `Hôte: ${sftp.host}\nPort: ${sftp.port}\nUtilisateur: ${sftp.username}\nMot de passe: ${sftp.password}`;
     copyToClipboard(fullText, 'all');
   };
@@ -227,7 +228,7 @@ export default function DashboardPage() {
           ...prev,
           user: {
             ...prev.user,
-            sftp: { ...prev.user.sftp, password: json.sftpPassword },
+            sftp: prev.user.sftp ? { ...prev.user.sftp, password: json.sftpPassword } : null,
           },
         };
       });
@@ -579,7 +580,10 @@ export default function DashboardPage() {
         )}
 
         {/* SFTP Credentials Bar */}
-        {user.sftp.username && (
+        {(() => {
+          const sftp = user.sftp;
+          if (!sftp) return null;
+          return (
           <section className="bg-zinc-950 border border-white/10 rounded-xl p-5 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -627,26 +631,26 @@ export default function DashboardPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
               <div className="bg-white/[0.02] border border-white/5 rounded-lg p-3">
                 <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-sans font-medium">Hôte</div>
-                <div className="text-white mt-1 select-all">{user.sftp.host}</div>
+                <div className="text-white mt-1 select-all">{sftp.host}</div>
               </div>
               <div className="bg-white/[0.02] border border-white/5 rounded-lg p-3">
                 <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-sans font-medium">Port</div>
-                <div className="text-white mt-1 select-all">{user.sftp.port}</div>
+                <div className="text-white mt-1 select-all">{sftp.port}</div>
               </div>
               <div className="bg-white/[0.02] border border-white/5 rounded-lg p-3">
                 <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-sans font-medium">Utilisateur</div>
-                <div className="text-white mt-1 select-all">{user.sftp.username}</div>
+                <div className="text-white mt-1 select-all">{sftp.username}</div>
               </div>
               <div className="bg-white/[0.02] border border-white/5 rounded-lg p-3 flex items-center justify-between">
                 <div className="min-w-0 pr-2">
                   <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-sans font-medium">Mot de passe</div>
                   <div className="text-white mt-1 select-all font-mono truncate">
-                    {showPassword ? user.sftp.password : '••••••••'}
+                    {showPassword ? sftp.password : '••••••••'}
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button
-                    onClick={() => copyToClipboard(user.sftp.password, 'pwd')}
+                    onClick={() => copyToClipboard(sftp.password, 'pwd')}
                     className="p-1 rounded text-zinc-400 hover:text-white hover:bg-white/5 transition"
                     title="Copier le mot de passe"
                   >
@@ -666,7 +670,8 @@ export default function DashboardPage() {
               Structure dans votre client SFTP : <span className="text-zinc-400">/&lt;nom-session&gt;/sync/</span> pour les fichiers de jeu, <span className="text-zinc-400">/&lt;nom-session&gt;/assets/</span> pour les visuels.
             </div>
           </section>
-        )}
+          );
+        })()}
 
         {/* Sessions Grid */}
         <section className="space-y-4">

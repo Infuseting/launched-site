@@ -1,18 +1,22 @@
+networks:
+  npm-network:
+    external: true
+
 services:
   postgres:
     image: postgres:16-alpine
     container_name: launched_postgres
     restart: unless-stopped
-    ports:
-      - "5433:5432"
     environment:
-      POSTGRES_USER: launched
-      POSTGRES_PASSWORD: launched_secret_dev
-      POSTGRES_DB: launched_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - npm-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U launched -d launched_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -22,17 +26,20 @@ services:
     container_name: launched_sftpgo
     restart: unless-stopped
     ports:
-      - "2022:2022" # SFTP Port
-      - "8080:8080" # WebAdmin & REST API Port
+      - "2022:2022" # SFTP exposé publiquement pour les clients (FileZilla, etc.)
+      # 8080 (WebAdmin & API) reste interne au réseau Docker uniquement
     environment:
       SFTPGO_DATA_PROVIDER__CREATE_DEFAULT_ADMIN: "true"
-      SFTPGO_DEFAULT_ADMIN_USERNAME: admin
-      SFTPGO_DEFAULT_ADMIN_PASSWORD: launched_admin_dev
+      SFTPGO_DEFAULT_ADMIN_USERNAME: ${SFTPGO_ADMIN_USER}
+      SFTPGO_DEFAULT_ADMIN_PASSWORD: ${SFTPGO_ADMIN_PASSWORD}
       SFTPGO_HTTPD__BINDINGS__0__PORT: 8080
       SFTPGO_SFTPD__BINDINGS__0__PORT: 2022
+      SFTPGO_COMMON__UMASK: "002"
     volumes:
       - sftpgo_data:/var/lib/sftpgo
       - sessions_storage:/srv/sftpgo/sessions
+    networks:
+      - npm-network
 
   web:
     build:
@@ -40,22 +47,22 @@ services:
       dockerfile: Dockerfile
     container_name: launched_web
     restart: unless-stopped
-    ports:
-      - "3000:3000"
     depends_on:
       postgres:
         condition: service_healthy
       sftpgo:
         condition: service_started
     env_file:
-      - .env.local
+      - .env
     environment:
-      # Surcharges réseau interne Docker (le conteneur web communique directement avec les conteneurs postgres et sftpgo)
-      DATABASE_URL: "postgresql://launched:launched_secret_dev@postgres:5432/launched_db?schema=public"
+      # Overrides réseau Docker interne (priorité sur .env)
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
       SFTPGO_API_URL: "http://sftpgo:8080/api/v2"
       STORAGE_BASE_DIR: "/srv/sftpgo/sessions"
     volumes:
       - sessions_storage:/srv/sftpgo/sessions
+    networks:
+      - npm-network
 
 volumes:
   postgres_data:

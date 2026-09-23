@@ -5,7 +5,10 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
-    const origin = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
+    const reqOrigin = new URL(request.url).origin;
+    const origin = (reqOrigin.includes("localhost") || reqOrigin.includes("127.0.0.1"))
+      ? reqOrigin
+      : (process.env.NEXT_PUBLIC_APP_URL || reqOrigin);
 
     const sessions = await prisma.session.findMany({
       where: { showInLauncher: true },
@@ -29,6 +32,7 @@ export async function GET(request: Request) {
       jvmArg: s.jvmArg,
       credits: s.credits,
       hostname: s.hostname || undefined,
+      isDefault: false,
       crack: s.crack,
       links: s.links.length > 0
         ? s.links.map((l) => ({

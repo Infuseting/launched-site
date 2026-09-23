@@ -28,8 +28,8 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}/?error=invalid_csrf_state`);
   }
 
-  const clientId = process.env.DISCORD_CLIENT_ID;
-  const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+  const clientId = process.env.DISCORD_CLIENT_ID?.replace(/^[|"'\s]+|[|"'\s]+$/g, "");
+  const clientSecret = process.env.DISCORD_CLIENT_SECRET?.replace(/^[|"'\s]+|[|"'\s]+$/g, "");
   const redirectUri = process.env.DISCORD_REDIRECT_URI || `${origin}/api/auth/discord/callback`;
 
   if (!clientId || !clientSecret) {
@@ -121,7 +121,7 @@ export async function GET(request: Request) {
     if (!user) {
       const generatedPassword = crypto.randomBytes(8).toString("hex");
       const cleanUsername = username.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 10);
-      const sftpUser = `u_${cleanUsername}_${discordId.slice(-4)}`;
+      const sftpUser = `u_${cleanUsername || "creator"}_${discordId.slice(-4)}`;
 
       user = await prisma.user.create({
         data: {
@@ -142,22 +142,34 @@ export async function GET(request: Request) {
         },
       });
 
-      // If admin, initialize SFTPGo account immediately
-      if (isAdmin && user.sftpUsername) {
-        await syncSftpUser({
-          username: user.sftpUsername,
-          password: generatedPassword,
-          diskQuotaBytes: user.diskQuotaBytes,
-          sessions: [],
-        });
+      if (user.sftpUsername) {
+        try {
+          await syncSftpUser({
+            username: user.sftpUsername,
+            password: generatedPassword,
+            diskQuotaBytes: user.diskQuotaBytes,
+            sessions: [],
+          });
+        } catch (sftpErr) {
+          console.warn("[Discord OAuth] SFTP initial sync warning:", sftpErr);
+        }
       }
     } else {
-      // Update username, avatar, and admin role if needed
+      const needsSftpGen = !user.sftpUsername || !user.sftpPassword || user.sftpPassword === "dummy-encrypted-password";
+      const cleanUsername = username.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 10);
+      const generatedPassword = crypto.randomBytes(8).toString("hex");
+      const sftpUser = user.sftpUsername || `u_${cleanUsername || "creator"}_${discordId.slice(-4)}`;
+      const sftpPass = (user.sftpPassword && user.sftpPassword !== "dummy-encrypted-password")
+        ? user.sftpPassword
+        : generatedPassword;
+
+      // Update username, avatar, admin role and sftp credentials if needed
       user = await prisma.user.update({
         where: { id: user.id },
         data: {
           username,
           avatar,
+          ...(needsSftpGen ? { sftpUsername: sftpUser, sftpPassword: sftpPass } : {}),
           ...(isAdmin && user.role !== "ADMIN" ? { role: "ADMIN", sessionLimit: Math.max(user.sessionLimit, 99) } : {}),
         },
         include: {
@@ -168,6 +180,24 @@ export async function GET(request: Request) {
           },
         },
       });
+
+      // Sync SFTP only if the user already has sessions
+      if (user.sftpUsername && user.sessionMembers.length > 0) {
+        try {
+          await syncSftpUser({
+            username: user.sftpUsername,
+            password: user.sftpPassword || undefined,
+            diskQuotaBytes: user.diskQuotaBytes,
+            sessions: user.sessionMembers.map((m) => ({
+              sessionId: m.session.id,
+              slug: m.session.slug,
+              sessionName: m.session.name,
+            })),
+          });
+        } catch (sftpErr) {
+          console.warn("[Discord OAuth] SFTP sync warning for existing user:", sftpErr);
+        }
+      }
     }
 
     // 4. Create JWT and set cookie
