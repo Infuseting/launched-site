@@ -42,6 +42,7 @@ export async function PUT(
     credits,
     hostname,
     crack,
+    isActive,
     links,
   } = body;
 
@@ -61,6 +62,7 @@ export async function PUT(
         ...(credits !== undefined ? { credits: credits.trim() } : {}),
         hostname: hostname !== undefined ? (hostname ? hostname.trim() : null) : undefined,
         ...(crack !== undefined ? { crack: Boolean(crack) } : {}),
+        ...(isActive !== undefined ? { isActive: Boolean(isActive) } : {}),
       },
     });
 
