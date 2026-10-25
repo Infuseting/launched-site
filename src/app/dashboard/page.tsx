@@ -253,10 +253,10 @@ export default function DashboardPage() {
     const payload = {
       name: formData.name,
       minecraft: formData.minecraft,
-      forge: formData.loaderType === 'forge' ? formData.loaderVersion : undefined,
-      fabric: formData.loaderType === 'fabric' ? formData.loaderVersion : undefined,
-      neoforge: formData.loaderType === 'neoforge' ? formData.loaderVersion : undefined,
-      quilt: formData.loaderType === 'quilt' ? formData.loaderVersion : undefined,
+      forge: formData.loaderType === 'forge' ? formData.loaderVersion : null,
+      fabric: formData.loaderType === 'fabric' ? formData.loaderVersion : null,
+      neoforge: formData.loaderType === 'neoforge' ? formData.loaderVersion : null,
+      quilt: formData.loaderType === 'quilt' ? formData.loaderVersion : null,
       syncDir: formData.syncDir,
       welcome: formData.welcome,
       jvmArg: formData.jvmArg,
@@ -846,7 +846,7 @@ export default function DashboardPage() {
                   <label className="block font-medium text-zinc-400 mb-1">Modloader</label>
                   <select
                     value={formData.loaderType}
-                    onChange={(e) => setFormData({ ...formData, loaderType: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, loaderType: e.target.value, loaderVersion: '' })}
                     className="w-full bg-zinc-900 border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
                   >
                     <option value="vanilla">Vanilla (aucun)</option>

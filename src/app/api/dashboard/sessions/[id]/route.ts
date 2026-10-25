@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import fs from "fs/promises";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { sessionLoaderUpdate } from "@/lib/session-loaders";
 import { syncSftpUser, getSessionPhysicalPath } from "@/lib/sftpgo";
 
 export async function PUT(
@@ -32,10 +33,6 @@ export async function PUT(
   const {
     name,
     minecraft,
-    forge,
-    fabric,
-    neoforge,
-    quilt,
     syncDir,
     welcome,
     jvmArg,
@@ -47,6 +44,13 @@ export async function PUT(
     links,
   } = body;
 
+  let loaders;
+  try {
+    loaders = sessionLoaderUpdate(body);
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message }, { status: 400 });
+  }
+
   const targetShow = showInLauncher !== undefined 
     ? Boolean(showInLauncher) 
     : (isActive !== undefined ? Boolean(isActive) : undefined);
@@ -57,10 +61,7 @@ export async function PUT(
       data: {
         ...(name ? { name: name.trim() } : {}),
         ...(minecraft ? { minecraft: minecraft.trim() } : {}),
-        forge: forge !== undefined ? (forge ? forge.trim() : null) : undefined,
-        fabric: fabric !== undefined ? (fabric ? fabric.trim() : null) : undefined,
-        neoforge: neoforge !== undefined ? (neoforge ? neoforge.trim() : null) : undefined,
-        quilt: quilt !== undefined ? (quilt ? quilt.trim() : null) : undefined,
+        ...loaders,
         ...(syncDir !== undefined ? { syncDir: syncDir.trim() } : {}),
         ...(welcome !== undefined ? { welcome: welcome.trim() } : {}),
         ...(jvmArg !== undefined ? { jvmArg: jvmArg.trim() } : {}),

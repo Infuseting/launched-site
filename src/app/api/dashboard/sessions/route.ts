@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { sessionLoaderUpdate } from "@/lib/session-loaders";
 import { syncSftpUser, ensureSessionDirectories } from "@/lib/sftpgo";
 
 export async function POST(request: Request) {
@@ -48,10 +49,6 @@ export async function POST(request: Request) {
   const {
     name,
     minecraft,
-    forge,
-    fabric,
-    neoforge,
-    quilt,
     syncDir = "mods,resourcepacks,shaderpacks",
     welcome = "",
     jvmArg = "-Xmx4G",
@@ -65,6 +62,13 @@ export async function POST(request: Request) {
 
   if (!name || typeof name !== "string" || !minecraft) {
     return NextResponse.json({ error: "Nom et version Minecraft requis" }, { status: 400 });
+  }
+
+  let loaders;
+  try {
+    loaders = sessionLoaderUpdate(body);
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message }, { status: 400 });
   }
 
   // Generate unique slug
@@ -83,10 +87,7 @@ export async function POST(request: Request) {
         slug,
         name: name.trim(),
         minecraft: minecraft.trim(),
-        forge: forge ? forge.trim() : null,
-        fabric: fabric ? fabric.trim() : null,
-        neoforge: neoforge ? neoforge.trim() : null,
-        quilt: quilt ? quilt.trim() : null,
+        ...loaders,
         syncDir: syncDir.trim(),
         welcome: welcome.trim(),
         jvmArg: jvmArg.trim(),
