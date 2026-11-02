@@ -3,6 +3,8 @@ import crypto from "crypto";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sessionLoaderUpdate } from "@/lib/session-loaders";
+import { parseAccessUpdate } from '@/lib/launcher-protocol';
+import { accessEntries } from '@/lib/launcher-auth';
 import { syncSftpUser, ensureSessionDirectories } from "@/lib/sftpgo";
 
 export async function POST(request: Request) {
@@ -65,8 +67,10 @@ export async function POST(request: Request) {
   }
 
   let loaders;
+  let access;
   try {
     loaders = sessionLoaderUpdate(body);
+    access = parseAccessUpdate(body);
   } catch (error) {
     return NextResponse.json({ error: (error as Error).message }, { status: 400 });
   }
@@ -88,6 +92,8 @@ export async function POST(request: Request) {
         name: name.trim(),
         minecraft: minecraft.trim(),
         ...loaders,
+        publicAccess: access.publicAccess ?? true,
+        access: { create: await accessEntries(access.identifiers ?? []) },
         syncDir: syncDir.trim(),
         welcome: welcome.trim(),
         jvmArg: jvmArg.trim(),

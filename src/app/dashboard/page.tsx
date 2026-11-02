@@ -39,6 +39,8 @@ interface SessionData {
   hostname?: string | null;
   crack: boolean;
   showInLauncher: boolean;
+  publicAccess: boolean;
+  access: { identifier: string; discordId: string | null }[];
   isActive?: boolean;
   myRole: 'OWNER' | 'COLLABORATOR';
   links: LinkItem[];
@@ -94,6 +96,8 @@ export default function DashboardPage() {
     hostname: '',
     crack: false,
     showInLauncher: true,
+    publicAccess: true,
+    allowedDiscordUsers: '',
     links: [{ name: 'Discord', url: '', icon: '' }],
   });
 
@@ -264,6 +268,8 @@ export default function DashboardPage() {
       hostname: formData.hostname || undefined,
       crack: formData.crack,
       showInLauncher: formData.showInLauncher,
+      publicAccess: formData.publicAccess,
+      allowedDiscordUsers: formData.allowedDiscordUsers.split(/[\n,;]/).map(value => value.trim()).filter(Boolean),
       links: formData.links.filter((l) => l.name && l.url),
     };
 
@@ -378,6 +384,8 @@ export default function DashboardPage() {
       hostname: s.hostname || '',
       crack: s.crack,
       showInLauncher: s.showInLauncher ?? s.isActive ?? true,
+      publicAccess: s.publicAccess ?? true,
+      allowedDiscordUsers: (s.access ?? []).map(entry => entry.identifier).join('\n'),
       links: s.links.length > 0 ? s.links : [{ name: 'Discord', url: '', icon: '' }],
     });
     setEditSession(s);
@@ -397,6 +405,8 @@ export default function DashboardPage() {
       hostname: '',
       crack: false,
       showInLauncher: true,
+      publicAccess: true,
+      allowedDiscordUsers: '',
       links: [{ name: 'Discord', url: '', icon: '' }],
     });
     setCreateModalOpen(true);
@@ -1021,6 +1031,20 @@ export default function DashboardPage() {
                   </button>
                 )}
               </div>
+
+              <fieldset className="space-y-3 rounded-xl border border-white/10 p-4">
+                <legend className="px-1 font-semibold text-zinc-200">Accès des joueurs</legend>
+                <label htmlFor="session-public-access" className="block font-medium text-zinc-300">Qui peut rejoindre cette session ?</label>
+                <select id="session-public-access" value={formData.publicAccess ? 'public' : 'private'} onChange={e => setFormData({ ...formData, publicAccess: e.target.value === 'public' })} className="w-full rounded-lg border border-white/10 bg-zinc-900 p-3 text-white focus-visible:outline-2 focus-visible:outline-blue-400">
+                  <option value="public">Tous les comptes Discord connectés</option>
+                  <option value="private">Uniquement les comptes Discord autorisés</option>
+                </select>
+                {!formData.publicAccess && <>
+                  <label htmlFor="session-discord-users" className="block font-medium text-zinc-300">Comptes Discord autorisés</label>
+                  <textarea id="session-discord-users" aria-describedby="session-discord-help" rows={5} value={formData.allowedDiscordUsers} onChange={e => setFormData({ ...formData, allowedDiscordUsers: e.target.value })} placeholder={'nom.utilisateur\n123456789012345678'} className="w-full rounded-lg border border-white/10 bg-zinc-900 p-3 text-white focus-visible:outline-2 focus-visible:outline-blue-400" />
+                  <p id="session-discord-help" className="leading-relaxed text-zinc-400">Un nom d’utilisateur Discord unique ou un identifiant par ligne (500 maximum). Vous pouvez ajouter un compte avant sa première connexion. Les surnoms de serveur ne sont pas acceptés. Le propriétaire et les collaborateurs gardent l’accès au jeu ; cette liste ne donne aucun droit de modification.</p>
+                </>}
+              </fieldset>
 
               <div className="flex justify-end gap-2 pt-4 border-t border-white/10">
                 <button

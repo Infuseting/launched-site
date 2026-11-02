@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import { prisma } from "@/lib/prisma";
+import { authorizeSession, privateHeaders } from "@/lib/launcher-auth";
 import { getSessionPhysicalPath } from "@/lib/sftpgo";
 
 export const dynamic = "force-dynamic";
@@ -23,14 +23,9 @@ export async function GET(
   const { slug, file: fileParts } = await params;
 
   try {
-    const session = await prisma.session.findUnique({
-      where: { slug },
-      select: { id: true, showInLauncher: true },
-    });
-
-    if (!session || !session.showInLauncher) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
+    const authorization = await authorizeSession(request, slug);
+    if (authorization.response) return authorization.response;
+    const session = authorization.session;
 
     const assetsRootDir = path.resolve(getSessionPhysicalPath(session.id), "assets");
     const requestedPath = path.resolve(assetsRootDir, ...fileParts);
@@ -84,7 +79,7 @@ export async function GET(
       headers: {
         "Content-Length": stat.size.toString(),
         "Content-Type": contentType,
-        "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+        ...privateHeaders,
       },
     });
   } catch (err) {

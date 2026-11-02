@@ -9,7 +9,7 @@ interface AdminUser {
   discordId: string;
   username: string;
   avatar: string | null;
-  role: 'ADMIN' | 'CREATOR';
+  role: 'ADMIN' | 'CREATOR' | 'PLAYER';
   sessionLimit: number;
   ownedSessionsCount: number;
   diskQuotaBytes: number;
@@ -213,7 +213,7 @@ export default function AdminPage() {
                             ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
                             : 'bg-white/5 text-zinc-400 border-white/5'
                         }`}>
-                          {u.role === 'ADMIN' ? 'Administrateur' : 'Créateur'}
+                          {u.role === 'ADMIN' ? 'Administrateur' : u.role === 'PLAYER' ? 'Joueur' : 'Créateur'}
                         </span>
                       </td>
 

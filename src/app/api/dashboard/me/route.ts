@@ -51,6 +51,7 @@ export async function GET(request: Request) {
       session: {
         include: {
           links: true,
+          access: true,
           members: {
             include: {
               user: {

@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import { createOAuthState } from "@/lib/auth";
+import { launcherContext } from "@/lib/launcher-protocol";
 
 export async function GET(request: Request) {
+  let launcher;
+  try {
+    launcher = launcherContext(new URL(request.url).searchParams);
+  } catch {
+    return NextResponse.json({ error: "Paramètres launcher invalides" }, { status: 400 });
+  }
   const clientId = process.env.DISCORD_CLIENT_ID?.replace(/^[|"'\s]+|[|"'\s]+$/g, "");
   const origin = new URL(request.url).origin;
   const redirectUri = process.env.DISCORD_REDIRECT_URI || `${origin}/api/auth/discord/callback`;
@@ -16,7 +23,7 @@ export async function GET(request: Request) {
   // Generate cryptographically signed anti-CSRF state token
   const state = createOAuthState();
 
-  const scope = encodeURIComponent("identify guilds");
+  const scope = encodeURIComponent(launcher ? "identify" : "identify guilds");
   const encodedRedirect = encodeURIComponent(redirectUri);
 
   const discordAuthUrl = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodedRedirect}&response_type=code&scope=${scope}&state=${state}`;
@@ -37,6 +44,14 @@ export async function GET(request: Request) {
     path: "/",
     maxAge: 10 * 60, // 10 minutes
   });
+  if (launcher) {
+    response.cookies.set("oauth_launcher", JSON.stringify({ ...launcher, oauthState: state }), {
+      httpOnly: true, secure: process.env.NODE_ENV === "production" && !isLocalhost,
+      sameSite: "lax", path: "/", maxAge: 10 * 60,
+    });
+  } else {
+    response.cookies.delete("oauth_launcher");
+  }
 
   return response;
 }

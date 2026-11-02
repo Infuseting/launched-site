@@ -4,6 +4,8 @@ import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { createSessionToken, setSessionCookie, isDiscordAdmin, verifyOAuthState } from "@/lib/auth";
 import { syncSftpUser } from "@/lib/sftpgo";
+import { launcherContext } from "@/lib/launcher-protocol";
+import { createLauncherCode, privateHeaders } from "@/lib/launcher-auth";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -13,27 +15,42 @@ export async function GET(request: Request) {
 
   const cookieStore = await cookies();
   const savedState = cookieStore.get("oauth_state")?.value;
+  const savedLauncher = cookieStore.get("oauth_launcher")?.value;
+  cookieStore.delete("oauth_launcher");
 
   // Clear state cookie
   cookieStore.delete("oauth_state");
 
-  if (!code) {
-    return NextResponse.redirect(`${origin}/?error=missing_code`);
+  let launcher = null;
+  try {
+    const context = savedLauncher ? JSON.parse(savedLauncher) : null;
+    // A valid browser-bound context can report an error to its launcher even
+    // when Discord returns a bad/missing state. It must never authorize a login.
+    if (context?.oauthState === savedState && verifyOAuthState(savedState ?? null)) {
+      launcher = launcherContext(new URLSearchParams({
+        launcher_redirect: context.redirect, code_challenge: context.challenge, launcher_state: context.state,
+      }));
+    }
+  } catch {
+    return NextResponse.json({ error: "Contexte launcher invalide" }, { status: 400 });
   }
-
-  // Anti-CSRF verification: signed HMAC state or cookie fallback
-  const isStateValid = verifyOAuthState(state) || Boolean(savedState && state && state === savedState);
-  if (!isStateValid) {
-    console.warn(`[Discord OAuth] CSRF state verification failed. state: ${state}, savedState: ${savedState}`);
-    return NextResponse.redirect(`${origin}/?error=invalid_csrf_state`);
-  }
+  const failure = (error: string) => {
+    const target = new URL(launcher ? launcher.redirect : '/', origin);
+    target.searchParams.set('error', error);
+    if (launcher) target.searchParams.set('state', launcher.state);
+    return NextResponse.redirect(target, { headers: { ...privateHeaders, 'Referrer-Policy': 'no-referrer' } });
+  };
+  // Credentials are only issued after both the signature and browser binding pass.
+  const isStateValid = verifyOAuthState(state) && Boolean(savedState && state && state === savedState);
+  if (!isStateValid) return failure('invalid_csrf_state');
+  if (!code) return failure(searchParams.get('error') === 'access_denied' ? 'access_denied' : 'missing_code');
 
   const clientId = process.env.DISCORD_CLIENT_ID?.replace(/^[|"'\s]+|[|"'\s]+$/g, "");
   const clientSecret = process.env.DISCORD_CLIENT_SECRET?.replace(/^[|"'\s]+|[|"'\s]+$/g, "");
   const redirectUri = process.env.DISCORD_REDIRECT_URI || `${origin}/api/auth/discord/callback`;
 
   if (!clientId || !clientSecret) {
-    return NextResponse.json({ error: "Discord OAuth credentials missing" }, { status: 500 });
+    return failure('server_configuration');
   }
 
   try {
@@ -54,7 +71,7 @@ export async function GET(request: Request) {
 
     if (!tokenRes.ok) {
       console.error("[Discord OAuth] Token exchange failed:", await tokenRes.text());
-      return NextResponse.redirect(`${origin}/?error=auth_failed`);
+      return failure('auth_failed');
     }
 
     const tokenData = await tokenRes.json();
@@ -68,7 +85,7 @@ export async function GET(request: Request) {
     });
 
     if (!userRes.ok) {
-      return NextResponse.redirect(`${origin}/?error=profile_failed`);
+      return failure('profile_failed');
     }
 
     const discordProfile = await userRes.json();
@@ -79,6 +96,23 @@ export async function GET(request: Request) {
       : null;
 
     const isAdmin = isDiscordAdmin(discordId);
+
+    if (launcher) {
+      // Players use the same Discord identity but receive no creator/SFTP rights.
+      const player = await prisma.user.upsert({
+        where: { discordId },
+        create: { discordId, username, avatar, role: 'PLAYER' },
+        update: { username, avatar },
+      });
+      await prisma.sessionAccess.updateMany({
+        where: { identifier: username.toLowerCase(), discordId: null }, data: { discordId },
+      });
+      const launcherCode = await createLauncherCode(player.id, launcher.challenge);
+      const target = new URL(launcher.redirect);
+      target.searchParams.set('code', launcherCode);
+      target.searchParams.set('state', launcher.state);
+      return NextResponse.redirect(target, { headers: { ...privateHeaders, 'Referrer-Policy': 'no-referrer' } });
+    }
 
     // Verify user is a member of the Launched Discord server
     const requiredGuildId = process.env.DISCORD_GUILD_ID || "1496947207847411965";
@@ -169,6 +203,7 @@ export async function GET(request: Request) {
         data: {
           username,
           avatar,
+          ...(user.role === 'PLAYER' ? { role: 'CREATOR' as const } : {}),
           ...(needsSftpGen ? { sftpUsername: sftpUser, sftpPassword: sftpPass } : {}),
           ...(isAdmin && user.role !== "ADMIN" ? { role: "ADMIN", sessionLimit: Math.max(user.sessionLimit, 99) } : {}),
         },
@@ -200,6 +235,10 @@ export async function GET(request: Request) {
       }
     }
 
+    await prisma.sessionAccess.updateMany({
+      where: { identifier: username.toLowerCase(), discordId: null }, data: { discordId },
+    });
+
     // 4. Create JWT and set cookie
     const token = await createSessionToken({
       userId: user.id,
@@ -212,13 +251,12 @@ export async function GET(request: Request) {
     const baseOrigin = host ? `${proto}://${host}` : origin;
     const targetUrl = new URL("/dashboard", baseOrigin);
     targetUrl.searchParams.set("token", token);
-    console.log(`[Callback] Success for user ${user.username} (${user.id}). Redirecting to: ${targetUrl.toString()}`);
     const response = NextResponse.redirect(targetUrl);
     await setSessionCookie(token, response);
 
     return response;
   } catch (err) {
     console.error("[Discord OAuth] Callback error:", err);
-    return NextResponse.redirect(`${origin}/?error=server_error`);
+    return failure('server_error');
   }
 }

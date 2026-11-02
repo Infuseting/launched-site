@@ -8,6 +8,7 @@ datasource db {
 }
 
 enum Role {
+  PLAYER
   ADMIN
   CREATOR
 }
@@ -31,6 +32,8 @@ model User {
   updatedAt       DateTime         @updatedAt
 
   sessionMembers  SessionMember[]
+  launcherTokens  LauncherToken[]
+  launcherCodes   LauncherCode[]
 }
 
 model Session {
@@ -49,11 +52,46 @@ model Session {
   hostname    String?
   crack       Boolean         @default(false)
   showInLauncher Boolean      @default(true) @map("isActive")
+  publicAccess Boolean        @default(true)
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
   members     SessionMember[]
   links       SessionLink[]
+  access      SessionAccess[]
+}
+
+// Independent of creator membership: grants play access, never SFTP/edit access.
+model SessionAccess {
+  id         String  @id @default(uuid())
+  sessionId  String
+  identifier String
+  discordId  String?
+  session    Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, identifier])
+  @@index([discordId])
+}
+
+model LauncherToken {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
+
+model LauncherCode {
+  codeHash  String   @id
+  userId    String
+  challenge String
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
 }
 
 model SessionMember {

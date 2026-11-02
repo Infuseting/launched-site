@@ -255,7 +255,7 @@ export async function getCurrentUser(requestOrToken?: Request | string | null) {
         },
       },
     });
-    return user;
+    return user?.role === 'PLAYER' ? null : user;
   } catch (err) {
     console.error("[Auth] Error fetching user:", err);
     return null;

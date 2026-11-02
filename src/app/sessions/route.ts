@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getLauncherUser, visibleSessions, privateHeaders } from '@/lib/launcher-auth';
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +21,12 @@ function getAppOrigin(request: Request): string {
 
 export async function GET(request: Request) {
   try {
+    const user = await getLauncherUser(request);
+    if (!user) return NextResponse.json({ error: 'Connexion Discord requise' }, { status: 401, headers: privateHeaders });
     const origin = getAppOrigin(request);
 
     const sessions = await prisma.session.findMany({
-      where: { showInLauncher: true },
+      where: visibleSessions(user),
       include: {
         links: true,
       },
@@ -59,8 +62,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json(formattedSessions, {
       headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Cache-Control": "public, max-age=15, stale-while-revalidate=30",
+        ...privateHeaders,
       },
     });
   } catch (err) {

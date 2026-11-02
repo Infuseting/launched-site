@@ -3,6 +3,8 @@ import fs from "fs/promises";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sessionLoaderUpdate } from "@/lib/session-loaders";
+import { parseAccessUpdate } from '@/lib/launcher-protocol';
+import { accessEntries } from '@/lib/launcher-auth';
 import { syncSftpUser, getSessionPhysicalPath } from "@/lib/sftpgo";
 
 export async function PUT(
@@ -45,8 +47,10 @@ export async function PUT(
   } = body;
 
   let loaders;
+  let access;
   try {
     loaders = sessionLoaderUpdate(body);
+    access = parseAccessUpdate(body);
   } catch (error) {
     return NextResponse.json({ error: (error as Error).message }, { status: 400 });
   }
@@ -62,6 +66,16 @@ export async function PUT(
         ...(name ? { name: name.trim() } : {}),
         ...(minecraft ? { minecraft: minecraft.trim() } : {}),
         ...loaders,
+        publicAccess: access.publicAccess,
+        ...(access.identifiers ? { access: {
+          deleteMany: { identifier: { notIn: access.identifiers } },
+          upsert: (await accessEntries(access.identifiers)).map(entry => ({
+            where: { sessionId_identifier: { sessionId: id, identifier: entry.identifier } },
+            create: entry,
+            // Preserve the stable Discord ID once an invitation has been claimed.
+            update: {},
+          })),
+        } } : {}),
         ...(syncDir !== undefined ? { syncDir: syncDir.trim() } : {}),
         ...(welcome !== undefined ? { welcome: welcome.trim() } : {}),
         ...(jvmArg !== undefined ? { jvmArg: jvmArg.trim() } : {}),
