@@ -67,6 +67,7 @@ export async function GET(
       headers: {
         "Content-Length": stat.size.toString(),
         "Content-Type": "application/octet-stream",
+        "X-Content-Type-Options": "nosniff",
         ...privateHeaders,
       },
     });

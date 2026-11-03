@@ -206,6 +206,14 @@ test('guests can download only public session metadata and files, including afte
     sessions[0].publicAccess = true;
   }
   assert.equal((await routes[2].GET(request(), { params: Promise.resolve({ slug: 'public-guest', path: ['borrowed', 'secret.jar'] }) })).status, 403);
+  await writeFile(path.join(storage, 'public-guest', 'assets', 'logo.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><script>alert("untrusted")</script></svg>');
+  const svg = await routes[3].GET(request(), { params: Promise.resolve({ slug: 'public-guest', file: ['logo.svg'] }) });
+  assert.equal(svg.status, 200);
+  assert.equal(svg.headers.get('content-type'), 'image/svg+xml');
+  assert.equal(svg.headers.get('x-content-type-options'), 'nosniff');
+  assert.match(svg.headers.get('content-security-policy'), /default-src 'none'/);
+  assert.match(svg.headers.get('content-security-policy'), /(?:^|;)\s*sandbox(?:;|$)/);
+  await svg.arrayBuffer();
   resetToken();
   tokens.get(hashCredential(credential)).expiresAt = new Date(0);
   assert.equal((await list.GET(request('/sessions', authorized()))).status, 401);

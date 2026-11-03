@@ -70,7 +70,7 @@ expiré renvoie 401, sans repli anonyme. Tous utilisent le même filtre d’auto
 et `Cache-Control: private, no-store`. Les liens symboliques ne sont pas parcourus
 par le manifeste et les téléchargements vérifient leur confinement physique.
 Rust vérifie à nouveau les droits avant la synchronisation et le lancement,
- même si le jeu est déjà installé.
+même si le jeu est déjà installé.
 Les jetons ne sont envoyés qu’à l’origine du site configuré. Les visuels privés
 sont chargés via Rust, puis transmis à React sous forme d’images intégrées.
 

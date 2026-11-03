@@ -79,6 +79,8 @@ export async function GET(
       headers: {
         "Content-Length": stat.size.toString(),
         "Content-Type": contentType,
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",
         ...privateHeaders,
       },
     });
