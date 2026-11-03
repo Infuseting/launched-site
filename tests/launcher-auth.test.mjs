@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test, after } from 'node:test';
-import { readFile, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { readFile, mkdtemp, mkdir, writeFile, symlink, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
@@ -185,6 +185,9 @@ test('guests can download only public session metadata and files, including afte
   await mkdir(path.join(storage, 'public-guest', 'assets'), { recursive: true });
   await writeFile(path.join(storage, 'public-guest', 'sync', 'mods', 'test.jar'), 'public mod');
   await writeFile(path.join(storage, 'public-guest', 'assets', 'logo.png'), 'public logo');
+  await mkdir(path.join(storage, 'private-guest', 'sync'), { recursive: true });
+  await writeFile(path.join(storage, 'private-guest', 'sync', 'secret.jar'), 'private mod');
+  await symlink(path.join(storage, 'private-guest', 'sync'), path.join(storage, 'public-guest', 'sync', 'borrowed'), process.platform === 'win32' ? 'junction' : 'dir');
   const listing = await list.GET(request());
   assert.equal(listing.status, 200);
   assert.equal(listing.headers.get('cache-control'), 'private, no-store');
@@ -194,13 +197,15 @@ test('guests can download only public session metadata and files, including afte
     const response = await route.GET(request(), params('public-guest'));
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('cache-control'), 'private, no-store');
-    await response.arrayBuffer();
+    const bytes = await response.arrayBuffer();
+    if (route === routes[1]) assert.ok(!JSON.parse(Buffer.from(bytes).toString()).some(entry => entry.name.includes('borrowed') || entry.name.includes('secret.jar')));
     for (const slug of ['private-guest', 'missing']) assert.equal((await route.GET(request(), params(slug))).status, 404);
     assert.equal((await route.GET(request('/', { Authorization: 'Bearer invalid' }), params('public-guest'))).status, 401);
     sessions[0].publicAccess = false;
     assert.equal((await route.GET(request(), params('public-guest'))).status, 404);
     sessions[0].publicAccess = true;
   }
+  assert.equal((await routes[2].GET(request(), { params: Promise.resolve({ slug: 'public-guest', path: ['borrowed', 'secret.jar'] }) })).status, 403);
   resetToken();
   tokens.get(hashCredential(credential)).expiresAt = new Date(0);
   assert.equal((await list.GET(request('/sessions', authorized()))).status, 401);

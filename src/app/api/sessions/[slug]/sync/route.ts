@@ -47,7 +47,7 @@ async function scanDirectory(
     const relPath = path.relative(baseDir, fullPath).replace(/\\/g, "/");
 
     try {
-      const stats = await fs.stat(fullPath);
+      const stats = await fs.lstat(fullPath);
 
       if (stats.isDirectory()) {
         const dirName = relPath.endsWith("/") ? relPath : `${relPath}/`;
