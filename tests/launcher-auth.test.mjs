@@ -152,7 +152,7 @@ test('listing filters by authenticated identity and ignores the retired visibili
     { ...base, id: 'hidden', slug: 'hidden', name: 'Hidden', publicAccess: true, showInLauncher: false },
     { ...base, id: 'creator', slug: 'creator', name: 'Creator', publicAccess: false, showInLauncher: true, members: [{ userId: players[0].id }] },
   ];
-  assert.equal((await list.GET(request())).status, 401);
+  assert.deepEqual((await (await list.GET(request())).json()).map(s => s.name), ['Public', 'Hidden']);
   const response = await list.GET(request('/sessions', authorized()));
   assert.equal(response.headers.get('cache-control'), 'private, no-store');
   assert.deepEqual((await response.json()).map(s => s.name), ['Public', 'Private', 'Hidden', 'Creator']);
@@ -163,7 +163,7 @@ test('listing filters by authenticated identity and ignores the retired visibili
   await writeFile(path.join(storage, 'private', 'assets', 'logo.png'), 'private logo');
   for (const route of routes) {
     const params = slug => ({ params: Promise.resolve({ slug, path: ['mods', 'test.jar'], file: ['logo.png'] }) });
-    assert.equal((await route.GET(request(), params('private'))).status, 401);
+    assert.equal((await route.GET(request(), params('private'))).status, 404);
     for (const slug of ['other', 'missing']) assert.equal((await route.GET(request('/', authorized()), params(slug))).status, 404);
     const allowed = await route.GET(request('/', authorized()), params('private'));
     assert.equal(allowed.status, 200);
@@ -173,6 +173,38 @@ test('listing filters by authenticated identity and ignores the retired visibili
   // Revoking access affects a previously authorized token immediately.
   sessions[1].access = [];
   assert.equal((await auth.authorizeSession(request('/', authorized()), 'private')).response.status, 404);
+});
+
+test('guests can download only public session metadata and files, including after access changes', async () => {
+  const base = { minecraft: '1.21', syncDir: 'mods', welcome: '', jvmArg: '', credits: '', links: [], members: [], access: [] };
+  sessions = [
+    { ...base, id: 'public-guest', slug: 'public-guest', name: 'Public', publicAccess: true },
+    { ...base, id: 'private-guest', slug: 'private-guest', name: 'Private', publicAccess: false },
+  ];
+  await mkdir(path.join(storage, 'public-guest', 'sync', 'mods'), { recursive: true });
+  await mkdir(path.join(storage, 'public-guest', 'assets'), { recursive: true });
+  await writeFile(path.join(storage, 'public-guest', 'sync', 'mods', 'test.jar'), 'public mod');
+  await writeFile(path.join(storage, 'public-guest', 'assets', 'logo.png'), 'public logo');
+  const listing = await list.GET(request());
+  assert.equal(listing.status, 200);
+  assert.equal(listing.headers.get('cache-control'), 'private, no-store');
+  assert.deepEqual((await listing.json()).map(session => session.name), ['Public']);
+  for (const route of routes) {
+    const params = slug => ({ params: Promise.resolve({ slug, path: ['mods', 'test.jar'], file: ['logo.png'] }) });
+    const response = await route.GET(request(), params('public-guest'));
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'private, no-store');
+    await response.arrayBuffer();
+    for (const slug of ['private-guest', 'missing']) assert.equal((await route.GET(request(), params(slug))).status, 404);
+    assert.equal((await route.GET(request('/', { Authorization: 'Bearer invalid' }), params('public-guest'))).status, 401);
+    sessions[0].publicAccess = false;
+    assert.equal((await route.GET(request(), params('public-guest'))).status, 404);
+    sessions[0].publicAccess = true;
+  }
+  resetToken();
+  tokens.get(hashCredential(credential)).expiresAt = new Date(0);
+  assert.equal((await list.GET(request('/sessions', authorized()))).status, 401);
+  assert.equal((await list.GET(request('/sessions', { Authorization: 'Bearer invalid' }))).status, 401);
 });
 
 test('launcher login reuses the site callback, creates players, and claims pending invitations', async () => {

@@ -24,7 +24,8 @@ export async function getLauncherUser(request: Request) {
   return session.user;
 }
 
-export function visibleSessions(user: { id: string; discordId: string }): Prisma.SessionWhereInput {
+export function visibleSessions(user: { id: string; discordId: string } | null): Prisma.SessionWhereInput {
+  if (!user) return { publicAccess: true };
   return {
     OR: [
       { publicAccess: true },
@@ -36,7 +37,9 @@ export function visibleSessions(user: { id: string; discordId: string }): Prisma
 
 export async function authorizeSession(request: Request, slug: string) {
   const user = await getLauncherUser(request);
-  if (!user) return { response: NextResponse.json({ error: 'Connexion Discord requise' }, { status: 401, headers: privateHeaders }) };
+  if (!user && request.headers.has('authorization')) {
+    return { response: NextResponse.json({ error: 'Connexion Discord expirée ou invalide' }, { status: 401, headers: privateHeaders }) };
+  }
   const session = await prisma.session.findFirst({ where: { slug, ...visibleSessions(user) }, include: { links: true } });
   if (!session) return { response: NextResponse.json({ error: 'Session introuvable ou accès refusé' }, { status: 404, headers: privateHeaders }) };
   return { session };

@@ -22,7 +22,9 @@ function getAppOrigin(request: Request): string {
 export async function GET(request: Request) {
   try {
     const user = await getLauncherUser(request);
-    if (!user) return NextResponse.json({ error: 'Connexion Discord requise' }, { status: 401, headers: privateHeaders });
+    if (!user && request.headers.has('authorization')) {
+      return NextResponse.json({ error: 'Connexion Discord expirée ou invalide' }, { status: 401, headers: privateHeaders });
+    }
     const origin = getAppOrigin(request);
 
     const sessions = await prisma.session.findMany({
@@ -67,6 +69,6 @@ export async function GET(request: Request) {
     });
   } catch (err) {
     console.error("[API Sessions] Failed to retrieve sessions:", err);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500, headers: privateHeaders });
   }
 }
