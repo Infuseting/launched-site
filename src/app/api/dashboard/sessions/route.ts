@@ -57,8 +57,6 @@ export async function POST(request: Request) {
     credits = `Created by ${user.username}`,
     hostname,
     crack = false,
-    showInLauncher,
-    isActive,
     links = [],
   } = body;
 
@@ -100,9 +98,6 @@ export async function POST(request: Request) {
         credits: credits.trim(),
         hostname: hostname ? hostname.trim() : null,
         crack: Boolean(crack),
-        showInLauncher: showInLauncher !== undefined 
-          ? Boolean(showInLauncher) 
-          : (isActive !== undefined ? Boolean(isActive) : true),
         members: {
           create: {
             userId: user.id,

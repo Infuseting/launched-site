@@ -5,8 +5,12 @@ import Link from 'next/link';
 import { 
   Server, HardDrive, Key, Copy, Check, RefreshCw, Plus, 
   Users, Edit3, Trash2, ArrowRightLeft, Shield, AlertCircle, LogOut,
-  Globe
+  Globe, LockKeyhole
 } from 'lucide-react';
+import { DiscordUserSelect, type DiscordAccessUser } from '@/components/discord-user-select';
+import { Field, FieldGroup, FieldLegend, FieldSet, FieldTitle } from '@/components/ui/field';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface LinkItem {
   name: string;
@@ -38,10 +42,8 @@ interface SessionData {
   credits: string;
   hostname?: string | null;
   crack: boolean;
-  showInLauncher: boolean;
   publicAccess: boolean;
-  access: { identifier: string; discordId: string | null }[];
-  isActive?: boolean;
+  access: { identifier: string; discordId: string | null; user?: { username: string; avatar: string | null } | null }[];
   myRole: 'OWNER' | 'COLLABORATOR';
   links: LinkItem[];
   members: MemberInfo[];
@@ -82,6 +84,14 @@ export default function DashboardPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editSession, setEditSession] = useState<SessionData | null>(null);
   const [collaboratorSession, setCollaboratorSession] = useState<SessionData | null>(null);
+  const sessionModalOpen = createModalOpen || Boolean(editSession);
+
+  useEffect(() => {
+    if (!sessionModalOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [sessionModalOpen]);
 
   // Form states
   const [formData, setFormData] = useState({
@@ -95,9 +105,8 @@ export default function DashboardPage() {
     credits: '',
     hostname: '',
     crack: false,
-    showInLauncher: true,
     publicAccess: true,
-    allowedDiscordUsers: '',
+    allowedDiscordUsers: [] as DiscordAccessUser[],
     links: [{ name: 'Discord', url: '', icon: '' }],
   });
 
@@ -267,9 +276,8 @@ export default function DashboardPage() {
       credits: formData.credits,
       hostname: formData.hostname || undefined,
       crack: formData.crack,
-      showInLauncher: formData.showInLauncher,
       publicAccess: formData.publicAccess,
-      allowedDiscordUsers: formData.allowedDiscordUsers.split(/[\n,;]/).map(value => value.trim()).filter(Boolean),
+      allowedDiscordUsers: formData.allowedDiscordUsers.map(user => user.identifier),
       links: formData.links.filter((l) => l.name && l.url),
     };
 
@@ -383,9 +391,13 @@ export default function DashboardPage() {
       credits: s.credits,
       hostname: s.hostname || '',
       crack: s.crack,
-      showInLauncher: s.showInLauncher ?? s.isActive ?? true,
       publicAccess: s.publicAccess ?? true,
-      allowedDiscordUsers: (s.access ?? []).map(entry => entry.identifier).join('\n'),
+      allowedDiscordUsers: (s.access ?? []).map(entry => ({
+        identifier: entry.identifier,
+        discordId: entry.discordId,
+        username: entry.user?.username ?? (/^\d{17,20}$/.test(entry.identifier) ? null : entry.identifier),
+        avatar: entry.user?.avatar ?? null,
+      })),
       links: s.links.length > 0 ? s.links : [{ name: 'Discord', url: '', icon: '' }],
     });
     setEditSession(s);
@@ -404,38 +416,11 @@ export default function DashboardPage() {
       credits: `Created by ${data.user.username}`,
       hostname: '',
       crack: false,
-      showInLauncher: true,
       publicAccess: true,
-      allowedDiscordUsers: '',
+      allowedDiscordUsers: [],
       links: [{ name: 'Discord', url: '', icon: '' }],
     });
     setCreateModalOpen(true);
-  };
-
-  const handleToggleShowInLauncher = async (session: SessionData) => {
-    const currentStatus = session.showInLauncher ?? session.isActive ?? true;
-    const nextStatus = !currentStatus;
-    try {
-      const res = await authFetch(`/api/dashboard/sessions/${session.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ showInLauncher: nextStatus }),
-      });
-      if (res.ok) {
-        setData((prev) => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            sessions: prev.sessions.map((s) => (s.id === session.id ? { ...s, showInLauncher: nextStatus, isActive: nextStatus } : s)),
-          };
-        });
-      } else {
-        const err = await res.json();
-        alert(err.error || 'Erreur lors de la mise à jour du statut');
-      }
-    } catch {
-      alert('Impossible de joindre le serveur');
-    }
   };
 
   if (loading) {
@@ -730,18 +715,6 @@ export default function DashboardPage() {
                             }`}>
                               {isOwner ? 'Propriétaire' : 'Collaborateur'}
                             </span>
-                            <button
-                              onClick={() => handleToggleShowInLauncher(s)}
-                              title={(s.showInLauncher ?? s.isActive ?? true) ? "Masquer du launcher" : "Afficher dans le launcher"}
-                              className={`text-[10px] font-semibold px-2 py-0.5 rounded border flex items-center gap-1.5 transition ${
-                                (s.showInLauncher ?? s.isActive ?? true)
-                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
-                                  : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:bg-zinc-700 hover:text-white'
-                              }`}
-                            >
-                              <span className={`w-1.5 h-1.5 rounded-full ${(s.showInLauncher ?? s.isActive ?? true) ? 'bg-emerald-400' : 'bg-zinc-500'}`} />
-                              <span>{(s.showInLauncher ?? s.isActive ?? true) ? 'Affiché dans le launcher' : 'Masqué du launcher'}</span>
-                            </button>
                           </div>
                           <div className="text-xs text-zinc-500 font-mono mt-1">
                             SFTP : /{s.slug}/
@@ -820,13 +793,15 @@ export default function DashboardPage() {
 
       {/* Modal Create / Edit Session */}
       {(createModalOpen || editSession) && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-zinc-950 border border-white/10 rounded-xl max-w-lg w-full p-6 space-y-5 my-8">
-            <h2 className="text-base font-bold text-white">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="session-dialog-title" className="flex h-[min(54rem,calc(100dvh-2rem))] w-full max-w-xl flex-col overflow-clip rounded-xl border border-white/10 bg-zinc-950">
+            <h2 id="session-dialog-title" className="shrink-0 border-b border-white/10 px-6 py-4 text-base font-bold text-white">
               {editSession ? `Modifier : ${editSession.name}` : 'Nouvelle session'}
             </h2>
 
-            <form onSubmit={handleSaveSession} className="space-y-4 text-xs">
+            <form onSubmit={handleSaveSession} className="flex min-h-0 flex-1 flex-col overflow-clip">
+              <ScrollArea className="min-h-0 flex-1">
+                <div className="flex min-w-0 flex-col gap-4 px-6 py-5 text-xs">
               <div>
                 <label className="block font-medium text-zinc-400 mb-1">Nom de la session</label>
                 <input
@@ -928,19 +903,6 @@ export default function DashboardPage() {
                 />
               </div>
 
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="showInLauncherCheckbox"
-                  checked={formData.showInLauncher}
-                  onChange={(e) => setFormData({ ...formData, showInLauncher: e.target.checked })}
-                  className="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-0"
-                />
-                <label htmlFor="showInLauncherCheckbox" className="text-zinc-300 font-medium">
-                  Afficher dans le launcher (accessible et téléchargeable pour les joueurs)
-                </label>
-              </div>
-
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -1032,21 +994,47 @@ export default function DashboardPage() {
                 )}
               </div>
 
-              <fieldset className="space-y-3 rounded-xl border border-white/10 p-4">
-                <legend className="px-1 font-semibold text-zinc-200">Accès des joueurs</legend>
-                <label htmlFor="session-public-access" className="block font-medium text-zinc-300">Qui peut rejoindre cette session ?</label>
-                <select id="session-public-access" value={formData.publicAccess ? 'public' : 'private'} onChange={e => setFormData({ ...formData, publicAccess: e.target.value === 'public' })} className="w-full rounded-lg border border-white/10 bg-zinc-900 p-3 text-white focus-visible:outline-2 focus-visible:outline-blue-400">
-                  <option value="public">Tous les comptes Discord connectés</option>
-                  <option value="private">Uniquement les comptes Discord autorisés</option>
-                </select>
-                {!formData.publicAccess && <>
-                  <label htmlFor="session-discord-users" className="block font-medium text-zinc-300">Comptes Discord autorisés</label>
-                  <textarea id="session-discord-users" aria-describedby="session-discord-help" rows={5} value={formData.allowedDiscordUsers} onChange={e => setFormData({ ...formData, allowedDiscordUsers: e.target.value })} placeholder={'nom.utilisateur\n123456789012345678'} className="w-full rounded-lg border border-white/10 bg-zinc-900 p-3 text-white focus-visible:outline-2 focus-visible:outline-blue-400" />
-                  <p id="session-discord-help" className="leading-relaxed text-zinc-400">Un nom d’utilisateur Discord unique ou un identifiant par ligne (500 maximum). Vous pouvez ajouter un compte avant sa première connexion. Les surnoms de serveur ne sont pas acceptés. Le propriétaire et les collaborateurs gardent l’accès au jeu ; cette liste ne donne aucun droit de modification.</p>
-                </>}
-              </fieldset>
+              <FieldSet className="rounded-xl border border-border p-4">
+                <FieldLegend>Accès des joueurs</FieldLegend>
+                <FieldGroup>
+                  <Field>
+                    <FieldTitle id="session-access-label">Qui peut rejoindre cette session ?</FieldTitle>
+                    <ToggleGroup
+                      type="single"
+                      variant="outline"
+                      orientation="vertical"
+                      aria-labelledby="session-access-label"
+                      value={formData.publicAccess ? 'public' : 'private'}
+                      onValueChange={value => { if (value) setFormData(previous => ({ ...previous, publicAccess: value === 'public' })); }}
+                      className="w-full"
+                    >
+                      <ToggleGroupItem value="public" className="h-auto min-h-11 w-full justify-start gap-2 whitespace-normal px-3 py-3">
+                        <Globe data-icon="inline-start" />
+                        Accessible à tout le monde
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="private" className="h-auto min-h-11 w-full justify-start gap-2 whitespace-normal px-3 py-3">
+                        <LockKeyhole data-icon="inline-start" />
+                        Uniquement les comptes Discord autorisés
+                      </ToggleGroupItem>
+                    </ToggleGroup>
+                  </Field>
+                  {!formData.publicAccess ? (
+                    <DiscordUserSelect
+                      value={formData.allowedDiscordUsers}
+                      onChange={users => setFormData(previous => ({ ...previous, allowedDiscordUsers: users }))}
+                      searchUsers={async (query, signal) => {
+                        const response = await authFetch(`/api/dashboard/users?q=${encodeURIComponent(query)}`, { signal });
+                        if (!response.ok) throw new Error('Recherche indisponible');
+                        return response.json();
+                      }}
+                    />
+                  ) : null}
+                </FieldGroup>
+              </FieldSet>
 
-              <div className="flex justify-end gap-2 pt-4 border-t border-white/10">
+                </div>
+              </ScrollArea>
+              <div className="flex shrink-0 justify-end gap-2 border-t border-white/10 px-6 py-4 text-sm">
                 <button
                   type="button"
                   onClick={() => { setCreateModalOpen(false); setEditSession(null); }}

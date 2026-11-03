@@ -26,7 +26,6 @@ export async function getLauncherUser(request: Request) {
 
 export function visibleSessions(user: { id: string; discordId: string }): Prisma.SessionWhereInput {
   return {
-    showInLauncher: true,
     OR: [
       { publicAccess: true },
       { access: { some: { discordId: user.discordId } } },

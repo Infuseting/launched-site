@@ -65,8 +65,18 @@ export async function GET(request: Request) {
     orderBy: { createdAt: "desc" },
   });
 
+  const discordIds = [...new Set(members.flatMap(m => m.session.access.flatMap(entry => entry.discordId ? [entry.discordId] : [])))];
+  const players = discordIds.length ? await prisma.user.findMany({
+    where: { discordId: { in: discordIds } },
+    select: { discordId: true, username: true, avatar: true },
+  }) : [];
+  const playersById = new Map(players.map(player => [player.discordId, player]));
   const sessions = members.map((m) => ({
     ...m.session,
+    access: m.session.access.map(entry => ({
+      ...entry,
+      user: entry.discordId ? playersById.get(entry.discordId) ?? null : null,
+    })),
     myRole: m.role,
   }));
 

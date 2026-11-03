@@ -142,7 +142,7 @@ test('code exchange verifies PKCE, expiry, single use, and stores only the token
   assert.equal((await exchange.POST(post({ code, verifier }))).status, 401);
 });
 
-test('listing filters by authenticated identity and protects private/hidden sessions on every file endpoint', async () => {
+test('listing filters by authenticated identity and ignores the retired visibility switch', async () => {
   resetToken();
   const base = { minecraft: '1.21', syncDir: 'mods', welcome: '', jvmArg: '', credits: '', links: [], members: [], access: [] };
   sessions = [
@@ -155,7 +155,8 @@ test('listing filters by authenticated identity and protects private/hidden sess
   assert.equal((await list.GET(request())).status, 401);
   const response = await list.GET(request('/sessions', authorized()));
   assert.equal(response.headers.get('cache-control'), 'private, no-store');
-  assert.deepEqual((await response.json()).map(s => s.name), ['Public', 'Private', 'Creator']);
+  assert.deepEqual((await response.json()).map(s => s.name), ['Public', 'Private', 'Hidden', 'Creator']);
+  assert.equal((await auth.authorizeSession(request('/', authorized()), 'hidden')).session.id, 'hidden');
   await mkdir(path.join(storage, 'private', 'sync', 'mods'), { recursive: true });
   await mkdir(path.join(storage, 'private', 'assets'), { recursive: true });
   await writeFile(path.join(storage, 'private', 'sync', 'mods', 'test.jar'), 'private mod');
@@ -163,7 +164,7 @@ test('listing filters by authenticated identity and protects private/hidden sess
   for (const route of routes) {
     const params = slug => ({ params: Promise.resolve({ slug, path: ['mods', 'test.jar'], file: ['logo.png'] }) });
     assert.equal((await route.GET(request(), params('private'))).status, 401);
-    for (const slug of ['other', 'hidden', 'missing']) assert.equal((await route.GET(request('/', authorized()), params(slug))).status, 404);
+    for (const slug of ['other', 'missing']) assert.equal((await route.GET(request('/', authorized()), params(slug))).status, 404);
     const allowed = await route.GET(request('/', authorized()), params('private'));
     assert.equal(allowed.status, 200);
     assert.equal(allowed.headers.get('cache-control'), 'private, no-store');
