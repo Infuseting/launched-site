@@ -1,5 +1,10 @@
 # Connexion Discord du launcher
 
+Le bouton « Continuer sans se connecter » ouvre les sessions publiques sans
+créer de compte. Le choix vaut pour l’exécution en cours du launcher. La connexion
+Discord reste disponible dans les paramètres, rubrique Comptes. En accès public,
+Rust n’envoie aucun jeton Discord, même si un compte est enregistré localement.
+
 Le launcher ouvre `/api/auth/discord/login` sur le site, avec une adresse de retour
 `http://127.0.0.1:<port>/callback`, un état aléatoire et un challenge PKCE S256.
 Discord continue de revenir sur l’unique `DISCORD_REDIRECT_URI` existante du site.
@@ -41,9 +46,11 @@ d’appartenance au serveur Discord ; elle permet ensuite au joueur de devenir
 créateur, avec un quota initial de zéro. Les rôles créateurs existants sont conservés.
 
 Dans le formulaire de session de l’espace créateur, « Accès des joueurs » permet
-de choisir entre tous les comptes Discord connectés et une liste de comptes.
-La visibilité dans le launcher reste un réglage indépendant : une session masquée
-reste inaccessible, même aux comptes présents dans sa liste.
+de choisir entre « Accessible à tout le monde » et « Uniquement les comptes Discord
+autorisés ». La liste est recherchable à partir de trois caractères et permet la
+sélection multiple de comptes Launched. Un identifiant Discord peut aussi être
+ajouté avant la première connexion du joueur. L’ancien réglage de visibilité
+indépendant n’est plus utilisé.
 
 La liste accepte les noms d’utilisateur uniques Discord (pas les surnoms ni les
 noms d’affichage) et les identifiants Discord. Un utilisateur peut être invité
@@ -56,21 +63,26 @@ l’autorisation. Propriétaire et collaborateurs ont aussi accès au jeu ; auto
 un joueur ne lui donne aucun droit d’édition ou de SFTP.
 
 La liste `/sessions` (et `/api/sessions`), les métadonnées, les visuels, les
-manifestes et les fichiers de synchronisation exigent un bearer du launcher.
-Tous utilisent le même filtre d’autorisation et `Cache-Control: private, no-store`.
+manifestes et les fichiers de synchronisation acceptent les requêtes anonymes
+uniquement pour les sessions publiques. Un bearer valide donne aussi accès aux
+sessions privées autorisées pour le compte. Un bearer fourni mais invalide ou
+expiré renvoie 401, sans repli anonyme. Tous utilisent le même filtre d’autorisation
+et `Cache-Control: private, no-store`. Les liens symboliques ne sont pas parcourus
+par le manifeste et les téléchargements vérifient leur confinement physique.
 Rust vérifie à nouveau les droits avant la synchronisation et le lancement,
-même si le jeu est déjà installé. Aucun repli vers l’ancien catalogue public.
+ même si le jeu est déjà installé.
 Les jetons ne sont envoyés qu’à l’origine du site configuré. Les visuels privés
 sont chargés via Rust, puis transmis à React sous forme d’images intégrées.
 
 ## Déploiement
 
-1. Publier la nouvelle version du launcher et prévoir le téléchargement direct
-   pour les anciens clients : l’ancien catalogue anonyme renverra désormais 401.
+1. Déployer le site qui autorise les sessions publiques sans bearer, puis publier
+   le launcher 1.6.1 ou ultérieur avec le bouton de connexion facultative.
 2. Déployer le site avec le nouveau schéma Prisma. Le Dockerfile existant exécute
    `prisma db push` au démarrage, ce qui ajoute les tables `LauncherToken`,
    `LauncherCode`, `SessionAccess`, le rôle `PLAYER` et `Session.publicAccess`.
-   Les sessions existantes gardent par défaut l’accès à tous les comptes connectés.
+   Les sessions existantes gardent par défaut l’accès public. Le passage de 1.6.0
+   à 1.6.1 n’ajoute pas de nouvelle migration de données.
    Pour une installation hors Docker : `npx prisma generate`, puis appliquer
    `npx prisma db push` avec la connexion de la base ciblée avant le démarrage.
 3. Conserver les variables Discord/JWT existantes et une `NEXT_PUBLIC_APP_URL`
@@ -79,6 +91,8 @@ sont chargés via Rust, puis transmis à React sous forme d’images intégrées
    `/sessions` et `/api/sessions/*` avant d’activer des sessions privées.
 4. Vérifier une vraie connexion Discord, fermer/rouvrir le launcher, puis tester
    la déconnexion et une session privée avec deux comptes Discord différents.
+   Vérifier aussi le bouton sans connexion, la liste publique, les fichiers publics
+   et le refus des liens directs vers les sessions privées.
 
 En développement, définir `LAUNCHED_SITE_URL=http://127.0.0.1:3000` dans
 l’environnement du processus Tauri. `LAUNCHED_SERVERS_URL` permet de remplacer
@@ -91,11 +105,12 @@ cette instance locale ; sa redirection OAuth doit être enregistrée chez Discor
 Avec Node 24 :
 
 ```sh
-node --test src/lib/session-loaders.test.mjs src/lib/launcher-protocol.test.mjs tests/launcher-auth.test.mjs
+node --test src/lib/session-loaders.test.mjs src/lib/launcher-protocol.test.mjs tests/launcher-auth.test.mjs tests/discord-user-search.test.mjs
 npm run build
 ```
 
 Les tests des handlers utilisent une base en mémoire isolée : aucun compte réel,
 aucune connexion Discord et aucune base configurée dans `.env.local` ne sont utilisés.
 Ils couvrent PKCE, expiration, rejeu concurrent, révocation, invitations en attente,
-contrôle de l’état OAuth et les quatre endpoints de fichiers/métadonnées.
+contrôle de l’état OAuth, l’accès anonyme limité au public, les liens symboliques
+et les quatre endpoints de fichiers/métadonnées.
