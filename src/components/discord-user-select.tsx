@@ -95,7 +95,11 @@ export function DiscordUserSelect({ value, onChange, searchUsers }: Props) {
         isItemEqualToValue={sameUser}
         itemToStringLabel={label}
         itemToStringValue={user => user.identifier}
-        onValueChange={users => {
+        onValueChange={(users, details) => {
+          if (details.reason === 'escape-key') {
+            details.cancel();
+            return;
+          }
           if (users.length <= 500) onChange(users);
           setInput('');
         }}
