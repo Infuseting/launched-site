@@ -288,8 +288,8 @@ export default function DashboardPage() {
         body: JSON.stringify(payload),
       });
       if (res.ok) {
+        await fetchDashboardData();
         setEditSession(null);
-        fetchDashboardData();
       } else {
         const err = await res.json();
         alert(err.error || 'Erreur lors de la mise à jour');
@@ -301,8 +301,8 @@ export default function DashboardPage() {
         body: JSON.stringify(payload),
       });
       if (res.ok) {
+        await fetchDashboardData();
         setCreateModalOpen(false);
-        fetchDashboardData();
       } else {
         const err = await res.json();
         alert(err.error || 'Erreur lors de la création');
