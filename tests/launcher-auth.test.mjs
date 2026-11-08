@@ -85,6 +85,7 @@ async function load(relative) {
   for (const spec of [...source.matchAll(/from ["']([^"']+)["']/g)].map(match => match[1])) {
     let replacement = replacements[spec];
     if (spec === '@/lib/launcher-auth') replacement = await load('src/lib/launcher-auth.ts');
+    if (spec === '@/lib/discord-presence') replacement = await load('src/lib/discord-presence.ts');
     if (spec === './launcher-protocol' || spec === '@/lib/launcher-protocol') replacement = pathToFileURL(path.join(fileURLToPath(root), 'src/lib/launcher-protocol.ts')).href;
     if (replacement) source = source.replaceAll(`from "${spec}"`, `from ${JSON.stringify(replacement)}`).replaceAll(`from '${spec}'`, `from ${JSON.stringify(replacement)}`);
   }
@@ -145,9 +146,10 @@ test('code exchange verifies PKCE, expiry, single use, and stores only the token
 test('listing filters by authenticated identity and ignores the retired visibility switch', async () => {
   resetToken();
   const base = { minecraft: '1.21', syncDir: 'mods', welcome: '', jvmArg: '', credits: '', links: [], members: [], access: [] };
+  const customPresence = { applicationId: '234567890123456789', showElapsed: true, activity: { type: 0, details: 'Sur le serveur privé' } };
   sessions = [
     { ...base, id: 'public', slug: 'public', name: 'Public', publicAccess: true, showInLauncher: true },
-    { ...base, id: 'private', slug: 'private', name: 'Private', publicAccess: false, showInLauncher: true, access: [{ discordId: players[0].discordId }] },
+    { ...base, id: 'private', slug: 'private', name: 'Private', publicAccess: false, showInLauncher: true, access: [{ discordId: players[0].discordId }], discordPresence: { mode: 'custom', config: customPresence } },
     { ...base, id: 'other', slug: 'other', name: 'Other', publicAccess: false, showInLauncher: true, access: [{ discordId: players[1].discordId }] },
     { ...base, id: 'hidden', slug: 'hidden', name: 'Hidden', publicAccess: true, showInLauncher: false },
     { ...base, id: 'creator', slug: 'creator', name: 'Creator', publicAccess: false, showInLauncher: true, members: [{ userId: players[0].id }] },
@@ -155,7 +157,10 @@ test('listing filters by authenticated identity and ignores the retired visibili
   assert.deepEqual((await (await list.GET(request())).json()).map(s => s.name), ['Public', 'Hidden']);
   const response = await list.GET(request('/sessions', authorized()));
   assert.equal(response.headers.get('cache-control'), 'private, no-store');
-  assert.deepEqual((await response.json()).map(s => s.name), ['Public', 'Private', 'Hidden', 'Creator']);
+  const visible = await response.json();
+  assert.deepEqual(visible.map(s => s.name), ['Public', 'Private', 'Hidden', 'Creator']);
+  assert.deepEqual(visible[1].discordPresence, customPresence);
+  assert.equal(visible[0].discordPresence, undefined);
   assert.equal((await auth.authorizeSession(request('/', authorized()), 'hidden')).session.id, 'hidden');
   await mkdir(path.join(storage, 'private', 'sync', 'mods'), { recursive: true });
   await mkdir(path.join(storage, 'private', 'assets'), { recursive: true });

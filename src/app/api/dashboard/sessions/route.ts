@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
+import { parsePresenceUpdate } from "@/lib/discord-presence";
 import { sessionLoaderUpdate } from "@/lib/session-loaders";
 import { parseAccessUpdate } from '@/lib/launcher-protocol';
 import { accessEntries } from '@/lib/launcher-auth';
@@ -66,9 +68,11 @@ export async function POST(request: Request) {
 
   let loaders;
   let access;
+  let presence;
   try {
     loaders = sessionLoaderUpdate(body);
     access = parseAccessUpdate(body);
+    presence = parsePresenceUpdate(body.discordPresence);
   } catch (error) {
     return NextResponse.json({ error: (error as Error).message }, { status: 400 });
   }
@@ -90,6 +94,7 @@ export async function POST(request: Request) {
         name: name.trim(),
         minecraft: minecraft.trim(),
         ...loaders,
+        discordPresence: presence === null ? Prisma.DbNull : presence,
         publicAccess: access.publicAccess ?? true,
         access: { create: await accessEntries(access.identifiers ?? []) },
         syncDir: syncDir.trim(),

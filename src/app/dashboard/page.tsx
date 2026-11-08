@@ -8,6 +8,8 @@ import {
   Globe, LockKeyhole
 } from 'lucide-react';
 import { DiscordUserSelect, type DiscordAccessUser } from '@/components/discord-user-select';
+import { SessionDiscordPresence, presenceFormValue } from '@/components/session-discord-presence';
+import type { SessionPresence } from '@/lib/discord-presence';
 import { Field, FieldGroup, FieldLegend, FieldSet, FieldTitle } from '@/components/ui/field';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -43,6 +45,7 @@ interface SessionData {
   hostname?: string | null;
   crack: boolean;
   publicAccess: boolean;
+  discordPresence: SessionPresence | null;
   access: { identifier: string; discordId: string | null; user?: { username: string; avatar: string | null } | null }[];
   myRole: 'OWNER' | 'COLLABORATOR';
   links: LinkItem[];
@@ -106,6 +109,7 @@ export default function DashboardPage() {
     hostname: '',
     crack: false,
     publicAccess: true,
+    discordPresence: presenceFormValue(),
     allowedDiscordUsers: [] as DiscordAccessUser[],
     links: [{ name: 'Discord', url: '', icon: '' }],
   });
@@ -263,6 +267,8 @@ export default function DashboardPage() {
 
   const handleSaveSession = async (e: React.FormEvent) => {
     e.preventDefault();
+    const { mode, config } = formData.discordPresence;
+    const discordPresence: SessionPresence | null = mode === 'custom' ? { mode, config } : null;
     const payload = {
       name: formData.name,
       minecraft: formData.minecraft,
@@ -277,6 +283,7 @@ export default function DashboardPage() {
       hostname: formData.hostname || undefined,
       crack: formData.crack,
       publicAccess: formData.publicAccess,
+      discordPresence,
       allowedDiscordUsers: formData.allowedDiscordUsers.map(user => user.identifier),
       links: formData.links.filter((l) => l.name && l.url),
     };
@@ -392,6 +399,7 @@ export default function DashboardPage() {
       hostname: s.hostname || '',
       crack: s.crack,
       publicAccess: s.publicAccess ?? true,
+      discordPresence: presenceFormValue(s.discordPresence),
       allowedDiscordUsers: (s.access ?? []).map(entry => ({
         identifier: entry.identifier,
         discordId: entry.discordId,
@@ -417,6 +425,7 @@ export default function DashboardPage() {
       hostname: '',
       crack: false,
       publicAccess: true,
+      discordPresence: presenceFormValue(),
       allowedDiscordUsers: [],
       links: [{ name: 'Discord', url: '', icon: '' }],
     });
@@ -993,6 +1002,9 @@ export default function DashboardPage() {
                   </button>
                 )}
               </div>
+
+              <SessionDiscordPresence value={formData.discordPresence}
+                onChange={discordPresence => setFormData(previous => ({ ...previous, discordPresence }))} />
 
               <FieldSet className="rounded-xl border border-border p-4">
                 <FieldLegend>Accès des joueurs</FieldLegend>

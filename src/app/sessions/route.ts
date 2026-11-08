@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { sessionPresenceForLauncher } from "@/lib/discord-presence";
 import { getLauncherUser, visibleSessions, privateHeaders } from '@/lib/launcher-auth';
 
 export const dynamic = "force-dynamic";
@@ -51,6 +52,7 @@ export async function GET(request: Request) {
       hostname: s.hostname || undefined,
       isDefault: false,
       crack: s.crack,
+      discordPresence: sessionPresenceForLauncher(s.discordPresence),
       links: s.links.length > 0
         ? s.links.map((l) => ({
             name: l.name,

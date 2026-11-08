@@ -53,6 +53,7 @@ model Session {
   crack       Boolean         @default(false)
   showInLauncher Boolean      @default(true) @map("isActive")
   publicAccess Boolean        @default(true)
+  discordPresence Json?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
