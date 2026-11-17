@@ -1,108 +1,103 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { withAuth, handleApiError } from "@/lib/api/middleware";
+import { createSessionSchema } from "@/lib/validations/session.schema";
 import { parsePresenceUpdate } from "@/lib/discord-presence";
 import { sessionLoaderUpdate } from "@/lib/session-loaders";
-import { parseAccessUpdate } from '@/lib/launcher-protocol';
-import { accessEntries } from '@/lib/launcher-auth';
+import { parseAccessUpdate } from "@/lib/launcher-protocol";
+import { accessEntries } from "@/lib/launcher-auth";
 import { syncSftpUser, ensureSessionDirectories } from "@/lib/sftpgo";
 
 export async function POST(request: Request) {
-  let user = await getCurrentUser(request);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  return withAuth(request, async (initialUser) => {
+    let user = initialUser;
 
-  // Auto-provision SFTP credentials if missing
-  if (!user.sftpUsername || !user.sftpPassword || user.sftpPassword === "dummy-encrypted-password") {
-    const cleanUsername = user.username.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 10);
-    const sftpUsername = user.sftpUsername || `u_${cleanUsername || "creator"}_${user.discordId.slice(-4)}`;
-    const sftpPassword = (user.sftpPassword && user.sftpPassword !== "dummy-encrypted-password")
-      ? user.sftpPassword
-      : crypto.randomBytes(8).toString("hex");
+    // Auto-provision SFTP credentials if missing
+    if (!user.sftpUsername || !user.sftpPassword || user.sftpPassword === "dummy-encrypted-password") {
+      const cleanUsername = user.username.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 10);
+      const sftpUsername = user.sftpUsername || `u_${cleanUsername || "creator"}_${user.discordId.slice(-4)}`;
+      const sftpPassword = (user.sftpPassword && user.sftpPassword !== "dummy-encrypted-password")
+        ? user.sftpPassword
+        : crypto.randomBytes(8).toString("hex");
 
-    user = await prisma.user.update({
-      where: { id: user.id },
-      data: { sftpUsername, sftpPassword },
-      include: {
-        sessionMembers: {
-          include: { session: true },
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { sftpUsername, sftpPassword },
+        include: {
+          sessionMembers: {
+            include: { session: true },
+          },
         },
+      });
+    }
+
+    // Verify session quota
+    const ownedCount = await prisma.sessionMember.count({
+      where: {
+        userId: user.id,
+        role: "OWNER",
       },
     });
-  }
 
-  // Verify session quota
-  const ownedCount = await prisma.sessionMember.count({
-    where: {
-      userId: user.id,
-      role: "OWNER",
-    },
-  });
+    if (ownedCount >= user.sessionLimit) {
+      return NextResponse.json(
+        { error: `Limite atteinte (${ownedCount}/${user.sessionLimit} sessions). Contactez un administrateur.` },
+        { status: 403 }
+      );
+    }
 
-  if (ownedCount >= user.sessionLimit) {
-    return NextResponse.json(
-      { error: `Limite atteinte (${ownedCount}/${user.sessionLimit} sessions). Contactez un administrateur.` },
-      { status: 403 }
-    );
-  }
+    const rawBody = await request.json();
+    const validated = createSessionSchema.parse(rawBody);
 
-  const body = await request.json();
-  const {
-    name,
-    minecraft,
-    syncDir = "mods,resourcepacks,shaderpacks",
-    welcome = "",
-    jvmArg = "-Xmx4G",
-    credits = `Created by ${user.username}`,
-    hostname,
-    crack = false,
-    links = [],
-  } = body;
+    const loaders = sessionLoaderUpdate(rawBody);
+    const access = parseAccessUpdate(rawBody);
+    const presence = parsePresenceUpdate(rawBody.discordPresence);
 
-  if (!name || typeof name !== "string" || !minecraft) {
-    return NextResponse.json({ error: "Nom et version Minecraft requis" }, { status: 400 });
-  }
+    // Generate unique slug
+    let baseSlug = validated.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+    if (!baseSlug) baseSlug = "session";
 
-  let loaders;
-  let access;
-  let presence;
-  try {
-    loaders = sessionLoaderUpdate(body);
-    access = parseAccessUpdate(body);
-    presence = parsePresenceUpdate(body.discordPresence);
-  } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 400 });
-  }
+    let slug = baseSlug;
+    let counter = 1;
+    while (await prisma.session.findUnique({ where: { slug } })) {
+      slug = `${baseSlug}-${counter++}`;
+    }
 
-  // Generate unique slug
-  let baseSlug = name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
-  if (!baseSlug) baseSlug = "session";
+    const appOrigin = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
+    const rawLinks = Array.isArray(validated.links) ? validated.links : [];
+    const sessionLinks = rawLinks.slice(0, 3).map((l: { name: string; url: string; icon?: string }) => {
+      const isDiscord = l.url.toLowerCase().includes("discord") || l.name.toLowerCase().includes("discord");
+      const defaultIcon = isDiscord
+        ? `${appOrigin}/assets/icons/discord.svg`
+        : `${appOrigin}/assets/icons/website.svg`;
+      return {
+        name: l.name,
+        url: l.url,
+        icon: l.icon && l.icon.trim() ? l.icon.trim() : defaultIcon,
+      };
+    });
 
-  let slug = baseSlug;
-  let counter = 1;
-  while (await prisma.session.findUnique({ where: { slug } })) {
-    slug = `${baseSlug}-${counter++}`;
-  }
-
-  try {
     const session = await prisma.session.create({
       data: {
         slug,
-        name: name.trim(),
-        minecraft: minecraft.trim(),
+        name: validated.name,
+        minecraft: validated.minecraft,
         ...loaders,
         discordPresence: presence === null ? Prisma.DbNull : presence,
         publicAccess: access.publicAccess ?? true,
         access: { create: await accessEntries(access.identifiers ?? []) },
-        syncDir: syncDir.trim(),
-        welcome: welcome.trim(),
-        jvmArg: jvmArg.trim(),
-        credits: credits.trim(),
-        hostname: hostname ? hostname.trim() : null,
-        crack: Boolean(crack),
+        syncDir: validated.syncDir,
+        welcome: validated.welcome,
+        jvmArg: validated.jvmArg,
+        credits: validated.credits ?? `Created by ${user.username}`,
+        hostname: validated.hostname || null,
+        crack: validated.crack,
         members: {
           create: {
             userId: user.id,
@@ -110,20 +105,7 @@ export async function POST(request: Request) {
           },
         },
         links: {
-          create: Array.isArray(links)
-            ? links.slice(0, 3).filter((l: any) => l.name && l.url).map((l: { name: string; url: string; icon?: string }) => {
-                const appOrigin = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
-                const isDiscord = l.url.toLowerCase().includes("discord") || l.name.toLowerCase().includes("discord");
-                const defaultIcon = isDiscord
-                  ? `${appOrigin}/assets/icons/discord.svg`
-                  : `${appOrigin}/assets/icons/website.svg`;
-                return {
-                  name: l.name.trim(),
-                  url: l.url.trim(),
-                  icon: l.icon && l.icon.trim() ? l.icon.trim() : defaultIcon,
-                };
-              })
-            : [],
+          create: sessionLinks,
         },
       },
       include: {
@@ -154,8 +136,5 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true, session });
-  } catch (err) {
-    console.error("[Create Session] Error:", err);
-    return NextResponse.json({ error: "Failed to create session" }, { status: 500 });
-  }
+  });
 }

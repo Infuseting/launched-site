@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parsePresenceUpdate, sessionPresenceForLauncher } from './discord-presence.ts';
+import { readFile } from 'node:fs/promises';
+import ts from 'typescript';
+
+const code = ts.transpileModule(await readFile(new URL('./discord-presence.ts', import.meta.url), 'utf8'), {
+  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+}).outputText;
+const virtual = source => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
+const { parsePresenceUpdate, sessionPresenceForLauncher } = await import(virtual(code));
 
 const custom = activity => ({
   mode: 'custom',

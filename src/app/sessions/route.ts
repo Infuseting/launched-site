@@ -38,11 +38,11 @@ export async function GET(request: Request) {
 
     const formattedSessions = sessions.map((s) => ({
       name: s.name,
+      slug: s.slug,
       minecraft: s.minecraft,
       forge: s.forge || undefined,
       fabric: s.fabric || undefined,
       neoforge: s.neoforge || undefined,
-      quilt: s.quilt || undefined,
       syncDir: s.syncDir,
       syncUrl: `${origin}/api/sessions/${s.slug}/sync`,
       assetsPath: `${origin}/api/sessions/${s.slug}/assets.json`,

@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import fs from "fs/promises";
-import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { withSessionMember, withSessionOwner } from "@/lib/api/middleware";
+import { updateSessionSchema } from "@/lib/validations/session.schema";
 import { parsePresenceUpdate } from "@/lib/discord-presence";
 import { sessionLoaderUpdate } from "@/lib/session-loaders";
-import { parseAccessUpdate } from '@/lib/launcher-protocol';
-import { accessEntries } from '@/lib/launcher-auth';
+import { parseAccessUpdate } from "@/lib/launcher-protocol";
+import { accessEntries } from "@/lib/launcher-auth";
 import { syncSftpUser, getSessionPhysicalPath } from "@/lib/sftpgo";
 
 export async function PUT(
@@ -14,85 +15,52 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const user = await getCurrentUser(request);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
 
-  // Check if member (owner or collaborator)
-  const membership = await prisma.sessionMember.findUnique({
-    where: {
-      userId_sessionId: {
-        userId: user.id,
-        sessionId: id,
-      },
-    },
-  });
+  return withSessionMember(request, id, async () => {
+    const rawBody = await request.json();
+    const validated = updateSessionSchema.parse(rawBody);
 
-  if (!membership) {
-    return NextResponse.json({ error: "Access Denied" }, { status: 403 });
-  }
+    const loaders = sessionLoaderUpdate(rawBody);
+    const access = parseAccessUpdate(rawBody);
+    const presence = parsePresenceUpdate(rawBody.discordPresence);
 
-  const body = await request.json();
-  const {
-    name,
-    minecraft,
-    syncDir,
-    welcome,
-    jvmArg,
-    credits,
-    hostname,
-    crack,
-    links,
-  } = body;
-
-  let loaders;
-  let access;
-  let presence;
-  try {
-    loaders = sessionLoaderUpdate(body);
-    access = parseAccessUpdate(body);
-    presence = parsePresenceUpdate(body.discordPresence);
-  } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 400 });
-  }
-
-  try {
     const updated = await prisma.session.update({
       where: { id },
       data: {
-        ...(name ? { name: name.trim() } : {}),
-        ...(minecraft ? { minecraft: minecraft.trim() } : {}),
+        ...(validated.name ? { name: validated.name } : {}),
+        ...(validated.minecraft ? { minecraft: validated.minecraft } : {}),
         ...loaders,
         discordPresence: presence === null ? Prisma.DbNull : presence,
         publicAccess: access.publicAccess,
-        ...(access.identifiers ? { access: {
-          deleteMany: { identifier: { notIn: access.identifiers } },
-          upsert: (await accessEntries(access.identifiers)).map(entry => ({
-            where: { sessionId_identifier: { sessionId: id, identifier: entry.identifier } },
-            create: entry,
-            // Preserve the stable Discord ID once an invitation has been claimed.
-            update: {},
-          })),
-        } } : {}),
-        ...(syncDir !== undefined ? { syncDir: syncDir.trim() } : {}),
-        ...(welcome !== undefined ? { welcome: welcome.trim() } : {}),
-        ...(jvmArg !== undefined ? { jvmArg: jvmArg.trim() } : {}),
-        ...(credits !== undefined ? { credits: credits.trim() } : {}),
-        hostname: hostname !== undefined ? (hostname ? hostname.trim() : null) : undefined,
-        ...(crack !== undefined ? { crack: Boolean(crack) } : {}),
+        ...(access.identifiers
+          ? {
+              access: {
+                deleteMany: { identifier: { notIn: access.identifiers } },
+                upsert: (await accessEntries(access.identifiers)).map((entry) => ({
+                  where: { sessionId_identifier: { sessionId: id, identifier: entry.identifier } },
+                  create: entry,
+                  update: {},
+                })),
+              },
+            }
+          : {}),
+        ...(validated.syncDir !== undefined ? { syncDir: validated.syncDir } : {}),
+        ...(validated.welcome !== undefined ? { welcome: validated.welcome } : {}),
+        ...(validated.jvmArg !== undefined ? { jvmArg: validated.jvmArg } : {}),
+        ...(validated.credits !== undefined ? { credits: validated.credits } : {}),
+        hostname: validated.hostname !== undefined ? (validated.hostname ? validated.hostname.trim() : null) : undefined,
+        ...(validated.crack !== undefined ? { crack: Boolean(validated.crack) } : {}),
       },
     });
 
-    // Update links if provided (max 3)
-    if (Array.isArray(links)) {
+    if (Array.isArray(validated.links)) {
       const appOrigin = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
-      const validLinks = links.slice(0, 3).filter((l: any) => l.name && l.url);
+      const validLinks = validated.links.slice(0, 3).filter((l) => l.name && l.url);
 
       await prisma.sessionLink.deleteMany({ where: { sessionId: id } });
       if (validLinks.length > 0) {
         await prisma.sessionLink.createMany({
-          data: validLinks.map((l: { name: string; url: string; icon?: string }) => {
+          data: validLinks.map((l) => {
             const isDiscord = l.url.toLowerCase().includes("discord") || l.name.toLowerCase().includes("discord");
             const defaultIcon = isDiscord
               ? `${appOrigin}/assets/icons/discord.svg`
@@ -109,10 +77,7 @@ export async function PUT(
     }
 
     return NextResponse.json({ success: true, session: updated });
-  } catch (err) {
-    console.error("[Update Session] Error:", err);
-    return NextResponse.json({ error: "Failed to update session" }, { status: 500 });
-  }
+  });
 }
 
 export async function DELETE(
@@ -120,26 +85,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const user = await getCurrentUser(request);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
 
-  // Must be OWNER to delete
-  const membership = await prisma.sessionMember.findUnique({
-    where: {
-      userId_sessionId: {
-        userId: user.id,
-        sessionId: id,
-      },
-    },
-  });
-
-  if (!membership || membership.role !== "OWNER") {
-    return NextResponse.json({ error: "Seul le propriétaire peut supprimer la session" }, { status: 403 });
-  }
-
-  try {
+  return withSessionOwner(request, id, async () => {
     // Get all members before deleting to resync their SFTP
     const members = await prisma.sessionMember.findMany({
       where: { sessionId: id },
@@ -179,8 +126,5 @@ export async function DELETE(
     }
 
     return NextResponse.json({ success: true });
-  } catch (err) {
-    console.error("[Delete Session] Error:", err);
-    return NextResponse.json({ error: "Failed to delete session" }, { status: 500 });
-  }
+  });
 }

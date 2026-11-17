@@ -1,11 +1,11 @@
-const loaderKeys = ['forge', 'fabric', 'neoforge', 'quilt'] as const;
+const loaderKeys = ['forge', 'fabric', 'neoforge'] as const;
 
 /** A loader change replaces the entire selection; unrelated updates preserve it. */
 export function sessionLoaderUpdate(body: Record<string, unknown>) {
   if (!loaderKeys.some((key) => Object.hasOwn(body, key))) return undefined;
 
   const loaders: Record<(typeof loaderKeys)[number], string | null> = {
-    forge: null, fabric: null, neoforge: null, quilt: null,
+    forge: null, fabric: null, neoforge: null,
   };
   for (const key of loaderKeys) {
     const value = body[key];

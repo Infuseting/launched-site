@@ -62,7 +62,7 @@ export async function GET(
       background = `${origin}/api/sessions/${slug}/assets/${encodeURIComponent(backgroundFiles[0])}`;
     } else {
       // Fallback default placeholder
-      background = `${origin}/hero.png`;
+      background = `${origin}/default-bg.jpg`;
     }
 
     // Detect logo

@@ -144,6 +144,21 @@ export async function ensureSessionDirectories(sessionId: string): Promise<void>
       await fs.chown(indexPhpPath, 1000, 1000).catch(() => {});
     }
   }
+
+  // Provision default background image in assets/ if absent
+  const defaultBgSource = path.join(process.cwd(), "public", "default-bg.jpg");
+  const destBg = path.join(assetsDir, "background.jpg");
+  try {
+    await fs.access(destBg);
+  } catch {
+    try {
+      await fs.copyFile(defaultBgSource, destBg);
+      await fs.chmod(destBg, 0o666).catch(() => {});
+      await fs.chown(destBg, 1000, 1000).catch(() => {});
+    } catch {
+      // Non-fatal if public asset is not available
+    }
+  }
 }
 
 /**
