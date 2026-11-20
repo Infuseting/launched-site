@@ -6,7 +6,7 @@ import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
-import { hashCredential, pkceChallenge } from '../src/lib/launcher-protocol.ts';
+import { createHash } from 'node:crypto';
 
 // Load the production handlers with isolated database/cookie adapters. No .env or real DB is used.
 const require = createRequire(import.meta.url);
@@ -86,13 +86,16 @@ async function load(relative) {
     let replacement = replacements[spec];
     if (spec === '@/lib/launcher-auth') replacement = await load('src/lib/launcher-auth.ts');
     if (spec === '@/lib/discord-presence') replacement = await load('src/lib/discord-presence.ts');
-    if (spec === './launcher-protocol' || spec === '@/lib/launcher-protocol') replacement = pathToFileURL(path.join(fileURLToPath(root), 'src/lib/launcher-protocol.ts')).href;
+    if (spec === '@/lib/session-background' || spec === './session-background') replacement = await load('src/lib/session-background.ts');
+    if (spec === './session-sync.mjs') replacement = pathToFileURL(path.join(fileURLToPath(root), 'src/lib/session-sync.mjs')).href;
+    if (spec === './launcher-protocol' || spec === '@/lib/launcher-protocol') replacement = await load('src/lib/launcher-protocol.ts');
     if (replacement) source = source.replaceAll(`from "${spec}"`, `from ${JSON.stringify(replacement)}`).replaceAll(`from '${spec}'`, `from ${JSON.stringify(replacement)}`);
   }
   const url = virtual(source);
   moduleUrls.set(relative, url);
   return url;
 }
+const { hashCredential, pkceChallenge } = await import(await load('src/lib/launcher-protocol.ts'));
 const auth = await import(await load('src/lib/launcher-auth.ts'));
 const exchange = await import(await load('src/app/api/auth/launcher/token/route.ts'));
 const logout = await import(await load('src/app/api/auth/launcher/logout/route.ts'));
@@ -113,6 +116,126 @@ const post = body => new Request('https://launcher.test/api/auth/launcher/token'
 function resetToken() {
   tokens.set(hashCredential(credential), { id: hashCredential(credential), tokenHash: hashCredential(credential), user: players[0], userId: players[0].id, expiresAt: new Date(Date.now() + 60_000) });
 }
+
+test('sync manifests and downloads preserve optional groups, hashes and legacy compatibility', async () => {
+  sessions = [{ id: 'optional-contract', slug: 'optional-contract', name: 'Optional', publicAccess: true, access: [], members: [] }];
+  const syncRoot = path.join(storage, 'optional-contract', 'sync');
+  const files = [
+    ['mandatory/mods/api.jar', 'mandatory'],
+    ['optional/mods/client/iris-1.7.0.jar', 'optional'],
+    ['optional/resourcepacks/Pack #1+é.zip', 'optional'],
+    ['optional/shaderpacks/shader.zip', 'optional'],
+    ['optional/root.zip', 'optional'],
+    ['mods/legacy.jar', 'mandatory'],
+    ['mandatory/config/nested/mandatory/keep.toml', 'mandatory'],
+    ['mandatory-extra/unchanged.txt', 'mandatory'],
+  ];
+  for (const [name] of files) {
+    await mkdir(path.dirname(path.join(syncRoot, name)), { recursive: true });
+    await writeFile(path.join(syncRoot, name), `bytes:${name}`);
+  }
+  const params = () => ({ params: Promise.resolve({ slug: 'optional-contract' }) });
+  const response = await routes[1].GET(request('/api/sessions/optional-contract/sync'), params());
+  assert.equal(response.status, 200);
+  const manifest = await response.json();
+  for (const [name, type] of files) {
+    const entry = manifest.find(file => file.name === name);
+    assert.ok(entry, name);
+    assert.equal(entry.type, type);
+    assert.equal(entry.size, String(Buffer.byteLength(`bytes:${name}`)));
+    assert.equal(entry.md5, createHash('md5').update(`bytes:${name}`).digest('hex'));
+    const download = await routes[2].GET(request(), { params: Promise.resolve({ slug: 'optional-contract', path: name.split('/') }) });
+    assert.equal(download.status, 200);
+    assert.equal(await download.text(), `bytes:${name}`);
+  }
+  assert.equal(manifest.find(entry => entry.name === 'optional/mods/client/').type, 'optional');
+  for (const value of ['true', '1']) {
+    const legacy = await (await routes[1].GET(request(`/api/sessions/optional-contract/sync?v1=${value}`), params())).json();
+    const api = legacy.find(file => file.name === 'mods/api.jar');
+    assert.ok(api);
+    assert.equal(api.md5, createHash('md5').update('bytes:mandatory/mods/api.jar').digest('hex'));
+    assert.ok(legacy.some(file => file.name === 'config/nested/mandatory/keep.toml'));
+    assert.ok(legacy.some(file => file.name === 'mandatory-extra/unchanged.txt'));
+    const mods = legacy.find(file => file.name === 'mods/');
+    assert.equal(mods.md5, createHash('md5').update('mods/').digest('hex'));
+    assert.ok(legacy.some(file => file.name === 'mods/legacy.jar'));
+    assert.ok(legacy.every(file => file.name !== '' && !file.name.startsWith('mandatory/') && !file.name.startsWith('optional/') && file.type === undefined));
+    for (const entry of legacy.filter(file => !file.name.endsWith('/'))) {
+      const download = await routes[2].GET(request(`/api/sessions/optional-contract/sync/${entry.name}`), {
+        params: Promise.resolve({ slug: 'optional-contract', path: entry.name.split('/') }),
+      });
+      assert.equal(download.status, 200, `v1 download failed: ${entry.name}`);
+      const bytes = Buffer.from(await download.arrayBuffer());
+      assert.equal(createHash('md5').update(bytes).digest('hex'), entry.md5);
+      assert.equal(String(bytes.length), entry.size);
+      assert.equal(download.headers.get('cache-control'), 'private, no-store');
+    }
+  }
+});
+
+test('download aliases preserve explicit paths, root files and the session filesystem jail', async () => {
+  const slug = 'download-aliases';
+  sessions = [{ id: slug, slug, name: 'Downloads', publicAccess: true, access: [], members: [] }];
+  const syncRoot = path.join(storage, slug, 'sync');
+  for (const [name, content] of [
+    ['mandatory/mods/only-mandatory.jar', 'mandatory'],
+    ['mods/shared.jar', 'root'],
+    ['mandatory/mods/shared.jar', 'prefixed'],
+    ['optional/mods/only-optional.jar', 'optional'],
+    ['optional/mods/nested.jar', 'nested optional folder'],
+    ['mandatory/mods/nested.jar', 'nested mandatory folder'],
+    ['mandatory/optional/mods/nested.jar', 'nested optional folder'],
+    ['mandatory/mandatory/mods/nested.jar', 'nested mandatory folder'],
+    ['mandatory/optional/mods/nested.jar', 'nested optional folder'],
+    ['mandatory/mandatory/mods/nested.jar', 'nested mandatory folder'],
+    ['mandatory/index.php', 'protected script'],
+  ]) {
+    await mkdir(path.dirname(path.join(syncRoot, name)), { recursive: true });
+    await writeFile(path.join(syncRoot, name), content);
+  }
+  const download = parts => routes[2].GET(request(), { params: Promise.resolve({ slug, path: parts.split('/') }) });
+  for (const [name, expected] of [
+    ['mods/only-mandatory.jar', 'mandatory'],
+    ['mandatory/mods/only-mandatory.jar', 'mandatory'],
+    ['mods/shared.jar', 'root'],
+    ['mandatory/mods/shared.jar', 'prefixed'],
+    ['optional/mods/only-optional.jar', 'optional'],
+  ]) {
+    const response = await download(name);
+    assert.equal(response.status, 200, name);
+    assert.equal(await response.text(), expected);
+  }
+  for (const name of ['mods/only-optional.jar', 'mods/missing.jar']) {
+    assert.equal((await download(name)).status, 404, name);
+  }
+  for (const name of ['index.php', 'mandatory/index.php', '../secret.jar']) {
+    assert.equal((await download(name)).status, 403, name);
+  }
+  const outside = path.join(storage, 'outside-downloads');
+  await mkdir(outside, { recursive: true });
+  await writeFile(path.join(outside, 'secret.jar'), 'secret');
+  await symlink(outside, path.join(syncRoot, 'mandatory', 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
+  assert.equal((await download('linked/secret.jar')).status, 403);
+  assert.equal((await download('mandatory/linked/secret.jar')).status, 403);
+});
+
+test('storage failures never return a successful empty or partial sync manifest', async () => {
+  sessions = [{ id: 'broken-storage', slug: 'broken-storage', name: 'Broken', publicAccess: true, access: [], members: [] }];
+  await mkdir(path.join(storage, 'broken-storage'), { recursive: true });
+  // A file where the sync directory should be forces a real ENOTDIR storage error.
+  await writeFile(path.join(storage, 'broken-storage', 'sync'), 'unavailable storage');
+  const previousError = console.error;
+  console.error = () => {};
+  try {
+    const response = await routes[1].GET(request('/api/sessions/broken-storage/sync'), {
+      params: Promise.resolve({ slug: 'broken-storage' }),
+    });
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), { error: 'Internal error' });
+  } finally {
+    console.error = previousError;
+  }
+});
 
 test('bearer is mandatory, expiry is enforced, use renews the session, logout revokes it', async () => {
   resetToken();
@@ -340,4 +463,71 @@ test('all recognized OAuth failures return to the bound launcher without exposin
     db.user.upsert = previousUpsert;
     process.env.DISCORD_CLIENT_SECRET = previousSecret;
   }
+});
+
+test('assets.json detects background images (.png, .jpg, etc.), prioritizing custom background over auto-provisioned default-bg', async () => {
+  const assetsJson = routes[0];
+  const base = { minecraft: '1.21', syncDir: 'mods', welcome: '', jvmArg: '', credits: '', links: [], members: [], access: [] };
+  const customSession = { ...base, id: 'custom-bg-test', slug: 'custom-bg-test', name: 'Custom BG Session', publicAccess: true, showInLauncher: true };
+  const emptySession = { ...base, id: 'empty-test', slug: 'empty-test', name: 'Empty Session', publicAccess: true, showInLauncher: true };
+  sessions.push(customSession, emptySession);
+
+  const customAssetsDir = path.join(storage, 'custom-bg-test', 'assets');
+  await mkdir(customAssetsDir, { recursive: true });
+  await writeFile(path.join(customAssetsDir, 'background.png'), 'custom background png data');
+
+  // 1. Session with background.png returns background.png
+  const res1 = await assetsJson.GET(request(), { params: Promise.resolve({ slug: 'custom-bg-test' }) });
+  assert.equal(res1.status, 200);
+  const data1 = await res1.json();
+  assert.ok(data1.background.endsWith('/api/sessions/custom-bg-test/assets/background.png'), `Expected background.png, got ${data1.background}`);
+
+  // 2. Session with background.png AND auto-provisioned background.jpg (identical size to public/default-bg.jpg)
+  const defaultBgSource = path.join(process.cwd(), 'public', 'default-bg.jpg');
+  const defaultBgContent = await readFile(defaultBgSource);
+  await writeFile(path.join(customAssetsDir, 'background.jpg'), defaultBgContent);
+
+  const res2 = await assetsJson.GET(request(), { params: Promise.resolve({ slug: 'custom-bg-test' }) });
+  assert.equal(res2.status, 200);
+  const data2 = await res2.json();
+  assert.ok(data2.background.endsWith('/api/sessions/custom-bg-test/assets/background.png'), `Expected background.png to be preferred over default background.jpg, got ${data2.background}`);
+
+  // 3. Session with no background files falls back to default-bg.jpg
+  const emptyAssetsDir = path.join(storage, 'empty-test', 'assets');
+  await mkdir(emptyAssetsDir, { recursive: true });
+  const res3 = await assetsJson.GET(request(), { params: Promise.resolve({ slug: 'empty-test' }) });
+  assert.equal(res3.status, 200);
+  const data3 = await res3.json();
+  assert.ok(data3.background.endsWith('/default-bg.jpg'), `Expected fallback default-bg.jpg, got ${data3.background}`);
+});
+
+test('provisioning and metadata preserve a custom JPEG with the same size as the default', async () => {
+  const previousRoot = process.env.STORAGE_BASE_DIR;
+  process.env.STORAGE_BASE_DIR = storage;
+  let sftp;
+  try {
+    sftp = await import(await load('src/lib/sftpgo.ts'));
+  } finally {
+    if (previousRoot === undefined) delete process.env.STORAGE_BASE_DIR;
+    else process.env.STORAGE_BASE_DIR = previousRoot;
+  }
+  const session = { id: 'same-size-bg', slug: 'same-size-bg', name: 'Same size', publicAccess: true, access: [], members: [], links: [] };
+  sessions.push(session);
+  const assets = path.join(storage, session.id, 'assets');
+  await mkdir(assets, { recursive: true });
+  const reference = await readFile(path.join(process.cwd(), 'public', 'default-bg.jpg'));
+  const custom = Buffer.from(reference);
+  custom[custom.length - 1] ^= 1;
+  await writeFile(path.join(assets, 'background.jpg'), custom);
+  await writeFile(path.join(assets, 'background.png'), 'another background');
+  await sftp.ensureSessionDirectories(session.id);
+  assert.deepEqual(await readFile(path.join(assets, 'background.jpg')), custom);
+  const response = await routes[0].GET(request(), { params: Promise.resolve({ slug: session.slug }) });
+  const metadata = await response.json();
+  assert.ok(Array.isArray(metadata.background));
+  assert.equal(metadata.background.length, 2);
+  // Identical default bytes should still be removed when another background exists.
+  await writeFile(path.join(assets, 'background.jpg'), reference);
+  await sftp.ensureSessionDirectories(session.id);
+  await assert.rejects(readFile(path.join(assets, 'background.jpg')), { code: 'ENOENT' });
 });

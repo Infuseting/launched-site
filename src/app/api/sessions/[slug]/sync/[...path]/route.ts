@@ -17,8 +17,8 @@ export async function GET(
     if (authorization.response) return authorization.response;
     const session = authorization.session;
 
-    const syncRootDir = path.resolve(getSessionPhysicalPath(session.id), "sync");
-    const requestedPath = path.resolve(syncRootDir, ...pathParts);
+    const syncRootDir = path.resolve(/*turbopackIgnore: true*/ getSessionPhysicalPath(session.id), "sync");
+    let requestedPath = path.resolve(/*turbopackIgnore: true*/ syncRootDir, ...pathParts);
 
     // 1. Lexical Path Traversal Check
     const lexicalRelative = path.relative(syncRootDir, requestedPath);
@@ -26,8 +26,20 @@ export async function GET(
       return NextResponse.json({ error: "Access Denied" }, { status: 403 });
     }
 
+    const fileName = path.basename(requestedPath);
+    if (fileName === "index.php" || fileName === ".htaccess") {
+      return NextResponse.json({ error: "Access Denied" }, { status: 403 });
+    }
+
     if (!fs.existsSync(requestedPath)) {
-      return NextResponse.json({ error: "File not found" }, { status: 404 });
+      // v1 manifests expose destination paths without the mandatory/ prefix.
+      // Existing exact paths take precedence; otherwise resolve the mandatory
+      // source, including legitimate nested folders named mandatory or optional.
+      const mandatoryPath = path.resolve(/*turbopackIgnore: true*/ syncRootDir, "mandatory", lexicalRelative);
+      if (!fs.existsSync(mandatoryPath)) {
+        return NextResponse.json({ error: "File not found" }, { status: 404 });
+      }
+      requestedPath = mandatoryPath;
     }
 
     // 2. Reject Symbolic Links (prevent symlink escape to /etc/passwd or /root)

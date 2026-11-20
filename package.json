@@ -1,8 +1,9 @@
 {
   "name": "web",
-  "version": "26.0.0",
+  "version": "26.0.1",
   "private": true,
   "scripts": {
+    "sessions:migrate": "node scripts/migrate-sessions.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

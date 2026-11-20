@@ -1,5 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
+import { isDefaultBackground } from "./session-background";
+import { ensureSyncDirectories } from "./session-sync.mjs";
 
 const SFTPGO_API_URL = process.env.SFTPGO_API_URL || "http://127.0.0.1:8080/api/v2";
 const SFTPGO_API_KEY = process.env.SFTPGO_API_KEY || "";
@@ -54,63 +56,13 @@ async function getHeaders(): Promise<Record<string, string>> {
  * Returns physical path for a session on the filesystem.
  */
 export function getSessionPhysicalPath(sessionId: string): string {
-  return path.join(STORAGE_BASE_DIR, sessionId);
+  const base = path.isAbsolute(STORAGE_BASE_DIR)
+    ? STORAGE_BASE_DIR
+    : path.resolve(process.cwd(), STORAGE_BASE_DIR);
+  return path.join(base, sessionId);
 }
 
-export const SYNC_INDEX_PHP_CONTENT = `<?php
-ini_set('display_errors', '0');
-
-ini_set('log_errors', '1');
-
-header('Content-Type: application/json; charset=utf-8');
-function ScanDirectory($Directory, $tableau=false){
-    $slash = '';
-        $MyDirectory = opendir($Directory) or die('Erreur');
-        while($Entry = @readdir($MyDirectory)){
-                if($Entry != '.' && $Entry != '..' && $Entry != 'index.php' && $Entry != ".htaccess"){
-                        if(is_dir($Directory.'/'.$Entry)&& $Entry != '.' && $Entry != '..'){
-                                $slash = '/';
-                        }
-            else
-            {
-                $slash = '';
-            }
-                        $tableau[] = substr($Directory.'/'.$Entry, strlen(strstr($Directory.'/'.$Entry, '/', true))+1).$slash;
-                }
-                if(is_dir($Directory.'/'.$Entry)&& $Entry != '.' && $Entry != '..'){
-                        $tableau = ScanDirectory($Directory.'/'.$Entry, $tableau);
-                }
-        }
-        closedir($MyDirectory);
-        return $tableau;
-}
-
-header('Content-type: text/javascript');
-echo '['."\\n";
-$index = 0;
-foreach(ScanDirectory('.') as $key => $value)
-{
-        $stat = stat($value);
-        if($index != 0)
-        {
-                echo ", "."\\n";
-        }
-        echo '    {'."\\n";
-        echo '        "name":"'.htmlentities($value).'",'."\\n";
-        if(is_dir($value)){
-                echo '        "md5":"'.md5($value).'",'."\\n";
-                echo '        "size":"0"'."\\n";
-        }else{
-                echo '        "md5":"'.md5_file($value).'",'."\\n";
-                echo '        "size":"'.$stat['size'].'"'."\\n";
-        }
-        echo '    }';
-        $index++;
-}
-echo "\\n".']';
-
-?>
-`;
+export { SYNC_INDEX_PHP_CONTENT } from "./session-sync.mjs";
 
 /**
  * Ensures physical directories exist for a session (/sync and /assets)
@@ -118,46 +70,34 @@ echo "\\n".']';
  */
 export async function ensureSessionDirectories(sessionId: string): Promise<void> {
   const sessionDir = getSessionPhysicalPath(sessionId);
-  const syncDir = path.join(sessionDir, "sync");
+  await ensureSyncDirectories(sessionDir);
   const assetsDir = path.join(sessionDir, "assets");
 
-  await fs.mkdir(syncDir, { recursive: true });
-  await fs.mkdir(assetsDir, { recursive: true });
-
-  // Grant full read/write/traverse access so SFTPGo (non-root UID 1000) can write
-  await fs.chmod(sessionDir, 0o777).catch(() => {});
-  await fs.chmod(syncDir, 0o777).catch(() => {});
-  await fs.chmod(assetsDir, 0o777).catch(() => {});
-  await fs.chown(sessionDir, 1000, 1000).catch(() => {});
-  await fs.chown(syncDir, 1000, 1000).catch(() => {});
-  await fs.chown(assetsDir, 1000, 1000).catch(() => {});
-
-  const indexPhpPath = path.join(syncDir, "index.php");
-  try {
-    await fs.writeFile(indexPhpPath, SYNC_INDEX_PHP_CONTENT, { encoding: "utf8", mode: 0o444 });
-    await fs.chown(indexPhpPath, 1000, 1000).catch(() => {});
-  } catch (err: any) {
-    if (err.code === "EACCES") {
-      await fs.chmod(indexPhpPath, 0o644).catch(() => {});
-      await fs.writeFile(indexPhpPath, SYNC_INDEX_PHP_CONTENT, "utf8");
-      await fs.chmod(indexPhpPath, 0o444).catch(() => {});
-      await fs.chown(indexPhpPath, 1000, 1000).catch(() => {});
-    }
-  }
-
-  // Provision default background image in assets/ if absent
+  // Provision default background image in assets/ only if no background is present (png, jpg, jpeg, webp)
   const defaultBgSource = path.join(process.cwd(), "public", "default-bg.jpg");
   const destBg = path.join(assetsDir, "background.jpg");
   try {
-    await fs.access(destBg);
-  } catch {
-    try {
+    const existingFiles: string[] = await fs.readdir(assetsDir).catch(() => [] as string[]);
+    const hasCustomBg = existingFiles.some(
+      (f: string) => /^background/i.test(f) && /\.(png|jpg|jpeg|webp)$/i.test(f)
+    );
+    if (!hasCustomBg) {
       await fs.copyFile(defaultBgSource, destBg);
       await fs.chmod(destBg, 0o666).catch(() => {});
       await fs.chown(destBg, 1000, 1000).catch(() => {});
-    } catch {
-      // Non-fatal if public asset is not available
+    } else if (existingFiles.includes("background.jpg")) {
+      // If a custom background (e.g. background.png) is present and background.jpg matches default-bg, clean up stale default
+      if (await isDefaultBackground(destBg)) {
+        const otherBgs = existingFiles.filter(
+          (f: string) => f !== "background.jpg" && /^background/i.test(f) && /\.(png|jpg|jpeg|webp)$/i.test(f)
+        );
+        if (otherBgs.length > 0) {
+          await fs.unlink(destBg).catch(() => {});
+        }
+      }
     }
+  } catch {
+    // Non-fatal if public asset is not available
   }
 }
 

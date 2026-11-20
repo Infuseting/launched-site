@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { launcherContext, parseAccessUpdate, pkceChallenge } from './launcher-protocol.ts';
+import { readFile } from 'node:fs/promises';
+import ts from 'typescript';
+
+const code = ts.transpileModule(await readFile(new URL('./launcher-protocol.ts', import.meta.url), 'utf8'), {
+  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+}).outputText;
+const virtual = source => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
+const { launcherContext, parseAccessUpdate, pkceChallenge } = await import(virtual(code));
 
 test('launcher callback permits only a loopback IP and a PKCE-bound state', () => {
   const params = new URLSearchParams({ launcher_redirect: 'http://127.0.0.1:54321/callback', code_challenge: 'a'.repeat(43), launcher_state: 'b'.repeat(43) });

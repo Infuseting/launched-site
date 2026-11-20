@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { authorizeSession, privateHeaders } from "@/lib/launcher-auth";
 import { getSessionPhysicalPath } from "@/lib/sftpgo";
+import { isDefaultBackground } from "@/lib/session-background";
 
 export const dynamic = "force-dynamic";
 
@@ -48,18 +49,34 @@ export async function GET(
       files = [];
     }
 
-    // Detect backgrounds (supports multiple for auto-rotation)
+    // Detect backgrounds (supports multiple for auto-rotation, standard 'background' naming: .png, .jpg, .jpeg, .webp)
     const backgroundFiles = files.filter((f) =>
-      /^background|^bg/i.test(f) && /\.(png|jpg|jpeg|webp)$/i.test(f)
+      /^background/i.test(f) && /\.(png|jpg|jpeg|webp)$/i.test(f)
     );
 
+    // If a custom background (e.g. background.png) is present and background.jpg
+    // matches the auto-provisioned default-bg, filter out the default background.jpg
+    let effectiveBgFiles = backgroundFiles;
+    if (backgroundFiles.length > 1 && backgroundFiles.includes("background.jpg")) {
+      try {
+        if (await isDefaultBackground(path.join(assetsDir, "background.jpg"))) {
+          const nonDefault = backgroundFiles.filter((f) => f !== "background.jpg");
+          if (nonDefault.length > 0) {
+            effectiveBgFiles = nonDefault;
+          }
+        }
+      } catch {
+        // Fallback to original list if comparison fails
+      }
+    }
+
     let background: string | string[];
-    if (backgroundFiles.length > 1) {
-      background = backgroundFiles.map(
+    if (effectiveBgFiles.length > 1) {
+      background = effectiveBgFiles.map(
         (f) => `${origin}/api/sessions/${slug}/assets/${encodeURIComponent(f)}`
       );
-    } else if (backgroundFiles.length === 1) {
-      background = `${origin}/api/sessions/${slug}/assets/${encodeURIComponent(backgroundFiles[0])}`;
+    } else if (effectiveBgFiles.length === 1) {
+      background = `${origin}/api/sessions/${slug}/assets/${encodeURIComponent(effectiveBgFiles[0])}`;
     } else {
       // Fallback default placeholder
       background = `${origin}/default-bg.jpg`;
