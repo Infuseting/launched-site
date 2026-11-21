@@ -1,5 +1,6 @@
 import React from 'react';
-import { Edit3, Users, Trash2, Play } from 'lucide-react';
+import { Edit3, Users, Trash2, Play, Link as LinkIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import type { SessionData } from '@/types/dashboard';
 
 interface SessionCardProps {
@@ -104,12 +105,21 @@ export const SessionCard: React.FC<SessionCardProps> = ({
         )}
       </div>
 
-      <div className="pt-3 border-t border-white/5 flex items-center justify-between text-[11px] text-zinc-500 font-mono">
-        <span>Sync : {session.syncDir}</span>
-        <div className="flex items-center gap-3">
+      <div className="pt-3 border-t border-white/5 flex flex-wrap items-center justify-between gap-3 text-[11px] text-zinc-500 font-mono">
+        <span className="break-all">Sync : {session.syncDir}</span>
+        <div className="flex flex-wrap items-center gap-3">
           <span>RAM : {session.jvmArg}</span>
+          <Button asChild size="sm" variant="ghost">
+            <a
+              href={`/launch/${encodeURIComponent(session.slug)}`}
+              title="Lien web partageable pour ouvrir cette session dans Launched"
+            >
+              <LinkIcon data-icon="inline-start" aria-hidden="true" />
+              Lien web
+            </a>
+          </Button>
           <a
-            href={`launched://session/${session.slug}`}
+            href={`launched://session/${encodeURIComponent(session.slug)}`}
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 hover:text-blue-300 transition text-[11px] font-sans font-medium"
             title="Lancer cette session dans Launched"
           >

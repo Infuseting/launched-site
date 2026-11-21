@@ -26,6 +26,16 @@ Le fichier `.env.example` décrit les variables attendues. Ne pas réutiliser se
 de démonstration en production. Le secret JWT chiffre aussi les identifiants SFTP
 historiques : une rotation doit prendre en compte les données déjà stockées.
 
+## Liens vers le launcher
+
+Chaque carte de session conserve son lien direct `launched://session/<slug>` et propose
+un **Lien web** partageable : `https://launched.infuseting.fr/launch/<slug>`.
+Cette page publique tente d'ouvrir le launcher et propose un bouton pour réessayer si
+le navigateur bloque l'ouverture automatique, ainsi qu'un lien de téléchargement.
+Elle ne donne aucun accès supplémentaire aux sessions privées : le launcher vérifie
+toujours les droits Discord. Après installation, ouvrir le launcher une fois permet
+aussi d'enregistrer ou de réparer l'association `launched://` sous Windows et Linux.
+
 ## Contrôles qualité
 
 ```sh
