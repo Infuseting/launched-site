@@ -106,7 +106,7 @@ export function SessionDiscordPresence({
           </ToggleGroup>
           <FieldDescription id="discord-presence-help">
             {mode === 'default' &&
-              'Affiche le nom de la session et la tête du skin Minecraft dans la présence Launched.'}
+              'Affiche le nom de la session, la tête du skin Minecraft et un bouton pour ouvrir la session dans Launched.'}
             {mode === 'custom' &&
               'Affiche votre activité sur le profil Discord des joueurs pendant que Minecraft tourne.'}
           </FieldDescription>
@@ -230,7 +230,9 @@ export function SessionDiscordPresence({
             <FieldSet>
               <FieldLegend variant="label">Boutons</FieldLegend>
               <FieldDescription>
-                Jusqu’à deux liens, visibles par les personnes qui consultent le profil du joueur.
+                Jusqu’à deux liens, visibles par les personnes qui consultent le profil du joueur.{' '}
+                Le bouton « Rejoindre sur Launched » est ajouté automatiquement s’il reste une
+                place. Il ne donne aucun accès supplémentaire aux sessions privées.
               </FieldDescription>
               {[0, 1].map((index) => {
                 const buttons = activity.buttons ?? [];

@@ -4,6 +4,7 @@ import { useOSDetection } from '@/hooks/useOSDetection';
 import { GitHubRelease } from '@/lib/github';
 import { motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
+import Image from 'next/image';
 
 export default function Hero({ release }: { release: GitHubRelease | null }) {
   const os = useOSDetection();
@@ -52,6 +53,14 @@ export default function Hero({ release }: { release: GitHubRelease | null }) {
 
   return (
     <section className="relative h-screen w-full flex flex-col items-center justify-center bg-black overflow-hidden pt-20">
+      <Image
+        src="/logo.png"
+        alt=""
+        width={96}
+        height={96}
+        priority
+        className="mb-6 size-20 rounded-2xl md:size-24"
+      />
       <motion.h1
         initial={{ opacity: 0, y: reducedMotion ? 0 : 20 }}
         animate={{ opacity: 1, y: 0 }}

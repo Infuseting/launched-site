@@ -1,6 +1,6 @@
 {
   "name": "web",
-  "version": "26.1.0",
+  "version": "26.1.2",
   "private": true,
   "scripts": {
     "sessions:migrate": "node scripts/migrate-sessions.mjs",

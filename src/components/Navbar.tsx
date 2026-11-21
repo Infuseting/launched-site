@@ -4,6 +4,7 @@ import { authFetch } from '@/lib/browser-auth';
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Brand from '@/components/Brand';
 
 export default function Navbar() {
   const [user, setUser] = useState<{ username: string; avatar: string | null } | null>(null);
@@ -27,7 +28,7 @@ export default function Navbar() {
         href="/"
         className="text-xl font-black tracking-tighter text-white hover:text-blue-500 transition-colors"
       >
-        LAUNCHED<span className="text-blue-600">.</span>
+        <Brand />
       </Link>
       <nav className="flex items-center gap-x-4 gap-y-0 sm:gap-x-8 flex-wrap text-[11px] font-bold tracking-[0.15em] uppercase text-zinc-400">
         <Link

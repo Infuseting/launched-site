@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { Shield, LogOut } from 'lucide-react';
 import type { DashboardUser } from '@/types/dashboard';
+import Brand from '@/components/Brand';
 
 interface DashboardHeaderProps {
   user: DashboardUser;
@@ -17,7 +18,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ user }) => {
           href="/"
           className="font-black tracking-tighter text-xl text-white hover:text-blue-500 transition-colors"
         >
-          LAUNCHED<span className="text-blue-600">.</span>
+          <Brand />
         </Link>
         <span className="text-zinc-600 font-mono">/</span>
         <span className="text-xs text-zinc-400 font-medium">Espace Créateur</span>
