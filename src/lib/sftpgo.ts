@@ -1,35 +1,37 @@
-import fs from "fs/promises";
-import path from "path";
-import { isDefaultBackground } from "./session-background";
-import { ensureSyncDirectories } from "./session-sync.mjs";
+import fs from 'fs/promises';
+import path from 'path';
+import { isDefaultBackground } from './session-background';
+import { ensureSyncDirectories } from './session-sync.mjs';
 
-const SFTPGO_API_URL = process.env.SFTPGO_API_URL || "http://127.0.0.1:8080/api/v2";
-const SFTPGO_API_KEY = process.env.SFTPGO_API_KEY || "";
-const SFTPGO_ADMIN_USER = process.env.SFTPGO_ADMIN_USER || "admin";
-const SFTPGO_ADMIN_PASSWORD = process.env.SFTPGO_ADMIN_PASSWORD || "";
-const STORAGE_BASE_DIR = process.env.STORAGE_BASE_DIR || "/srv/sftpgo/sessions";
+const SFTPGO_API_URL = process.env.SFTPGO_API_URL || 'http://127.0.0.1:8080/api/v2';
+const SFTPGO_API_KEY = process.env.SFTPGO_API_KEY || '';
+const SFTPGO_ADMIN_USER = process.env.SFTPGO_ADMIN_USER || 'admin';
+const SFTPGO_ADMIN_PASSWORD = process.env.SFTPGO_ADMIN_PASSWORD || '';
+const STORAGE_BASE_DIR = process.env.STORAGE_BASE_DIR || '/srv/sftpgo/sessions';
 
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
 async function getHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    'Content-Type': 'application/json',
   };
 
   if (SFTPGO_API_KEY) {
-    headers["x-api-key"] = SFTPGO_API_KEY;
-    headers["Authorization"] = `Bearer ${SFTPGO_API_KEY}`;
+    headers['x-api-key'] = SFTPGO_API_KEY;
+    headers['Authorization'] = `Bearer ${SFTPGO_API_KEY}`;
     return headers;
   }
 
   if (SFTPGO_ADMIN_PASSWORD) {
     if (cachedToken && cachedToken.expiresAt > Date.now() + 60000) {
-      headers["Authorization"] = `Bearer ${cachedToken.token}`;
+      headers['Authorization'] = `Bearer ${cachedToken.token}`;
       return headers;
     }
 
     try {
-      const basicAuth = Buffer.from(`${SFTPGO_ADMIN_USER}:${SFTPGO_ADMIN_PASSWORD}`).toString("base64");
+      const basicAuth = Buffer.from(`${SFTPGO_ADMIN_USER}:${SFTPGO_ADMIN_PASSWORD}`).toString(
+        'base64',
+      );
       const tokenRes = await fetch(`${SFTPGO_API_URL}/token`, {
         headers: { Authorization: `Basic ${basicAuth}` },
       });
@@ -40,12 +42,12 @@ async function getHeaders(): Promise<Record<string, string>> {
             token: data.access_token,
             expiresAt: Date.now() + 15 * 60 * 1000,
           };
-          headers["Authorization"] = `Bearer ${data.access_token}`;
+          headers['Authorization'] = `Bearer ${data.access_token}`;
           return headers;
         }
       }
     } catch (err) {
-      console.warn("[SFTPGo] Failed to obtain JWT token via basic auth:", err);
+      console.warn('[SFTPGo] Failed to obtain JWT token via basic auth:', err);
     }
   }
 
@@ -58,11 +60,12 @@ async function getHeaders(): Promise<Record<string, string>> {
 export function getSessionPhysicalPath(sessionId: string): string {
   const base = path.isAbsolute(STORAGE_BASE_DIR)
     ? STORAGE_BASE_DIR
-    : path.resolve(process.cwd(), STORAGE_BASE_DIR);
+    : // Session payloads are mounted at runtime, never bundled with application source.
+      path.resolve(/* turbopackIgnore: true */ process.cwd(), STORAGE_BASE_DIR);
   return path.join(base, sessionId);
 }
 
-export { SYNC_INDEX_PHP_CONTENT } from "./session-sync.mjs";
+export { SYNC_INDEX_PHP_CONTENT } from './session-sync.mjs';
 
 /**
  * Ensures physical directories exist for a session (/sync and /assets)
@@ -71,25 +74,26 @@ export { SYNC_INDEX_PHP_CONTENT } from "./session-sync.mjs";
 export async function ensureSessionDirectories(sessionId: string): Promise<void> {
   const sessionDir = getSessionPhysicalPath(sessionId);
   await ensureSyncDirectories(sessionDir);
-  const assetsDir = path.join(sessionDir, "assets");
+  const assetsDir = path.join(sessionDir, 'assets');
 
   // Provision default background image in assets/ only if no background is present (png, jpg, jpeg, webp)
-  const defaultBgSource = path.join(process.cwd(), "public", "default-bg.jpg");
-  const destBg = path.join(assetsDir, "background.jpg");
+  const defaultBgSource = path.join(process.cwd(), 'public', 'default-bg.jpg');
+  const destBg = path.join(assetsDir, 'background.jpg');
   try {
     const existingFiles: string[] = await fs.readdir(assetsDir).catch(() => [] as string[]);
     const hasCustomBg = existingFiles.some(
-      (f: string) => /^background/i.test(f) && /\.(png|jpg|jpeg|webp)$/i.test(f)
+      (f: string) => /^background/i.test(f) && /\.(png|jpg|jpeg|webp)$/i.test(f),
     );
     if (!hasCustomBg) {
       await fs.copyFile(defaultBgSource, destBg);
       await fs.chmod(destBg, 0o666).catch(() => {});
       await fs.chown(destBg, 1000, 1000).catch(() => {});
-    } else if (existingFiles.includes("background.jpg")) {
+    } else if (existingFiles.includes('background.jpg')) {
       // If a custom background (e.g. background.png) is present and background.jpg matches default-bg, clean up stale default
       if (await isDefaultBackground(destBg)) {
         const otherBgs = existingFiles.filter(
-          (f: string) => f !== "background.jpg" && /^background/i.test(f) && /\.(png|jpg|jpeg|webp)$/i.test(f)
+          (f: string) =>
+            f !== 'background.jpg' && /^background/i.test(f) && /\.(png|jpg|jpeg|webp)$/i.test(f),
         );
         if (otherBgs.length > 0) {
           await fs.unlink(destBg).catch(() => {});
@@ -108,7 +112,7 @@ export async function sftpUserExists(username: string): Promise<boolean> {
   if (!SFTPGO_API_KEY && !SFTPGO_ADMIN_PASSWORD) return false;
   try {
     const res = await fetch(`${SFTPGO_API_URL}/users/${encodeURIComponent(username)}`, {
-      method: "GET",
+      method: 'GET',
       headers: await getHeaders(),
     });
     return res.status === 200;
@@ -132,7 +136,7 @@ export async function ensureSftpFolder(sessionId: string, sessionName: string): 
   try {
     // Check if folder exists
     const checkRes = await fetch(`${SFTPGO_API_URL}/folders/${encodeURIComponent(folderName)}`, {
-      method: "GET",
+      method: 'GET',
       headers: await getHeaders(),
     });
 
@@ -144,13 +148,13 @@ export async function ensureSftpFolder(sessionId: string, sessionName: string): 
 
     if (checkRes.status === 200) {
       await fetch(`${SFTPGO_API_URL}/folders/${encodeURIComponent(folderName)}`, {
-        method: "PUT",
+        method: 'PUT',
         headers: await getHeaders(),
         body: JSON.stringify(folderPayload),
       });
     } else {
       await fetch(`${SFTPGO_API_URL}/folders`, {
-        method: "POST",
+        method: 'POST',
         headers: await getHeaders(),
         body: JSON.stringify(folderPayload),
       });
@@ -179,7 +183,9 @@ export async function syncSftpUser(params: {
   sessions: UserSessionMapping[];
 }): Promise<boolean> {
   if (!SFTPGO_API_KEY && !SFTPGO_ADMIN_PASSWORD) {
-    console.warn("[SFTPGo] No SFTPGO_API_KEY or SFTPGO_ADMIN_PASSWORD configured. Skipping SFTPGo sync.");
+    console.warn(
+      '[SFTPGo] No SFTPGO_API_KEY or SFTPGO_ADMIN_PASSWORD configured. Skipping SFTPGo sync.',
+    );
     return false;
   }
 
@@ -201,14 +207,14 @@ export async function syncSftpUser(params: {
     username,
     status: 1,
     permissions: {
-      "/": ["*"],
+      '/': ['*'],
     },
     filters: {
       file_patterns: [
         {
-          path: "/",
+          path: '/',
           allowed_patterns: [],
-          denied_patterns: ["index.php", ".htaccess"],
+          denied_patterns: ['index.php', '.htaccess'],
           deny_policy: 1, // 1 = Hide: completely removed from directory listings and denied
         },
       ],
@@ -225,27 +231,34 @@ export async function syncSftpUser(params: {
     const exists = await sftpUserExists(username);
     if (exists) {
       const res = await fetch(`${SFTPGO_API_URL}/users/${encodeURIComponent(username)}`, {
-        method: "PUT",
+        method: 'PUT',
         headers: await getHeaders(),
         body: JSON.stringify(userPayload),
       });
       if (!res.ok) {
-        console.error(`[SFTPGo] Failed to update user ${username} (HTTP ${res.status}):`, await res.text());
+        console.error(
+          `[SFTPGo] Failed to update user ${username} (HTTP ${res.status}):`,
+          await res.text(),
+        );
         return false;
       }
       return true;
     } else {
       // Must have a password to create
       if (!password) {
-        userPayload.password = Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-8);
+        userPayload.password =
+          Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-8);
       }
       const res = await fetch(`${SFTPGO_API_URL}/users`, {
-        method: "POST",
+        method: 'POST',
         headers: await getHeaders(),
         body: JSON.stringify(userPayload),
       });
       if (!res.ok) {
-        console.error(`[SFTPGo] Failed to create user ${username} (HTTP ${res.status}):`, await res.text());
+        console.error(
+          `[SFTPGo] Failed to create user ${username} (HTTP ${res.status}):`,
+          await res.text(),
+        );
         return false;
       }
       return true;

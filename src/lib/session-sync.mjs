@@ -1,7 +1,7 @@
-import fs from "node:fs/promises";
-import { createReadStream } from "node:fs";
-import path from "node:path";
-import { createHash, randomUUID } from "node:crypto";
+import fs from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import path from 'node:path';
+import { createHash, randomUUID } from 'node:crypto';
 
 export const SYNC_INDEX_PHP_CONTENT = `<?php
 ini_set('display_errors', '0');
@@ -107,16 +107,21 @@ echo json_encode($output, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNES
 ?>
 `;
 
-const RESERVED = new Set(["mandatory", "optional", "index.php", ".htaccess"]);
+const RESERVED = new Set(['mandatory', 'optional', 'index.php', '.htaccess']);
 
 async function metadata(file) {
-  try { return await fs.lstat(file); }
-  catch (error) { if (error.code === "ENOENT") return null; throw error; }
+  try {
+    return await fs.lstat(file);
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
 }
 
 async function checkedDirectory(directory) {
   const info = await metadata(directory);
-  if (info && (info.isSymbolicLink() || !info.isDirectory())) throw new Error(`Unsafe session directory: ${directory}`);
+  if (info && (info.isSymbolicLink() || !info.isDirectory()))
+    throw new Error(`Unsafe session directory: ${directory}`);
   await fs.mkdir(directory, { recursive: true });
   await fs.chmod(directory, 0o777).catch(() => {});
   await fs.chown(directory, 1000, 1000).catch(() => {});
@@ -125,61 +130,78 @@ async function checkedDirectory(directory) {
 /** Every session creation and migration uses this exact canonical template. */
 export async function ensureSyncDirectories(sessionDirectory) {
   await checkedDirectory(sessionDirectory);
-  const sync = path.join(sessionDirectory, "sync");
-  for (const directory of [sync, path.join(sessionDirectory, "assets"), path.join(sync, "mandatory"), path.join(sync, "optional")]) {
+  const sync = path.join(sessionDirectory, 'sync');
+  for (const directory of [
+    sync,
+    path.join(sessionDirectory, 'assets'),
+    path.join(sync, 'mandatory'),
+    path.join(sync, 'optional'),
+  ]) {
     await checkedDirectory(directory);
   }
-  const index = path.join(sync, "index.php");
+  const index = path.join(sync, 'index.php');
   const existing = await metadata(index);
-  if (existing && (existing.isSymbolicLink() || !existing.isFile())) throw new Error(`Unsafe sync index: ${index}`);
-  const current = existing ? await fs.readFile(index, "utf8") : null;
+  if (existing && (existing.isSymbolicLink() || !existing.isFile()))
+    throw new Error(`Unsafe sync index: ${index}`);
+  const current = existing ? await fs.readFile(index, 'utf8') : null;
   if (current !== SYNC_INDEX_PHP_CONTENT) {
     // Keep temporary PHP outside sync/, so concurrent manifests cannot list it.
     const temporary = path.join(sessionDirectory, `.index-${randomUUID()}.tmp`);
-    await fs.writeFile(temporary, SYNC_INDEX_PHP_CONTENT, { encoding: "utf8", mode: 0o444, flag: "wx" });
+    await fs.writeFile(temporary, SYNC_INDEX_PHP_CONTENT, {
+      encoding: 'utf8',
+      mode: 0o444,
+      flag: 'wx',
+    });
     try {
       await fs.chown(temporary, 1000, 1000).catch(() => {});
-      try { await fs.rename(temporary, index); }
-      catch (error) {
-        if (!existing || !["EPERM", "EACCES"].includes(error.code)) throw error;
+      try {
+        await fs.rename(temporary, index);
+      } catch (error) {
+        if (!existing || !['EPERM', 'EACCES'].includes(error.code)) throw error;
         await fs.chmod(index, 0o644);
         await fs.rename(temporary, index);
       }
-    } finally { await fs.unlink(temporary).catch(() => {}); }
+    } finally {
+      await fs.unlink(temporary).catch(() => {});
+    }
   }
   await fs.chmod(index, 0o444);
   await fs.chown(index, 1000, 1000).catch(() => {});
 }
 
 export async function fileSha256(file) {
-  const hash = createHash("sha256");
+  const hash = createHash('sha256');
   for await (const chunk of createReadStream(file)) hash.update(chunk);
-  return hash.digest("hex");
+  return hash.digest('hex');
 }
 
 async function checkedDestination(root, relative) {
   const resolved = path.resolve(root, relative);
   const inside = path.relative(root, resolved);
-  if (!inside || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside)) throw new Error(`Unsafe destination: ${relative}`);
+  if (!inside || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside))
+    throw new Error(`Unsafe destination: ${relative}`);
   let current = root;
   for (const part of inside.split(path.sep)) {
     current = path.join(current, part);
     const info = await metadata(current);
     if (info?.isSymbolicLink()) throw new Error(`Symbolic link in destination: ${current}`);
-    if (info && current !== resolved && !info.isDirectory()) throw new Error(`File blocks destination: ${current}`);
+    if (info && current !== resolved && !info.isDirectory())
+      throw new Error(`File blocks destination: ${current}`);
   }
   return resolved;
 }
 
 /** Read-only preflight: detect every collision before moving any session data. */
 export async function planLegacyMigration(sessionDirectory) {
-  const sync = path.join(sessionDirectory, "sync");
+  const sync = path.join(sessionDirectory, 'sync');
   const rootInfo = await metadata(sync);
   if (!rootInfo) return [];
-  if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory()) throw new Error(`Unsafe sync directory: ${sync}`);
-  const mandatory = path.join(sync, "mandatory");
+  if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory())
+    throw new Error(`Unsafe sync directory: ${sync}`);
+  const mandatory = path.join(sync, 'mandatory');
   const mandatoryInfo = await metadata(mandatory);
-  if (mandatoryInfo && (mandatoryInfo.isSymbolicLink() || !mandatoryInfo.isDirectory())) throw new Error(`Unsafe mandatory directory: ${mandatory}`);
+  if (mandatoryInfo && (mandatoryInfo.isSymbolicLink() || !mandatoryInfo.isDirectory()))
+    throw new Error(`Unsafe mandatory directory: ${mandatory}`);
   const entries = [];
   async function walk(source, relative) {
     const info = await fs.lstat(source);
@@ -187,15 +209,36 @@ export async function planLegacyMigration(sessionDirectory) {
     const target = await checkedDestination(mandatory, relative);
     const existing = await metadata(target);
     if (info.isDirectory()) {
-      if (existing && !existing.isDirectory()) throw new Error(`Destination collision: ${relative}`);
-      entries.push({ relative, source, target, kind: "directory", mode: info.mode & 0o777, uid: info.uid, gid: info.gid });
-      for (const name of (await fs.readdir(source)).sort()) await walk(path.join(source, name), path.join(relative, name));
+      if (existing && !existing.isDirectory())
+        throw new Error(`Destination collision: ${relative}`);
+      entries.push({
+        relative,
+        source,
+        target,
+        kind: 'directory',
+        mode: info.mode & 0o777,
+        uid: info.uid,
+        gid: info.gid,
+      });
+      for (const name of (await fs.readdir(source)).sort())
+        await walk(path.join(source, name), path.join(relative, name));
     } else if (info.isFile()) {
       const sha256 = await fileSha256(source);
-      if (existing && (!existing.isFile() || existing.size !== info.size || await fileSha256(target) !== sha256)) {
+      if (
+        existing &&
+        (!existing.isFile() || existing.size !== info.size || (await fileSha256(target)) !== sha256)
+      ) {
         throw new Error(`Different files share a destination: ${relative}`);
       }
-      entries.push({ relative, source, target, kind: "file", size: info.size, sha256, duplicate: !!existing });
+      entries.push({
+        relative,
+        source,
+        target,
+        kind: 'file',
+        size: info.size,
+        sha256,
+        duplicate: !!existing,
+      });
     } else throw new Error(`Unsupported payload entry: ${source}`);
   }
   for (const name of (await fs.readdir(sync)).sort()) {
@@ -208,23 +251,31 @@ export async function planLegacyMigration(sessionDirectory) {
 export async function applyLegacyMigration(sessionDirectory, entries) {
   await ensureSyncDirectories(sessionDirectory);
   for (const entry of entries) {
-    if (entry.kind === "directory") {
+    if (entry.kind === 'directory') {
       await fs.mkdir(entry.target, { recursive: true });
       await fs.chmod(entry.target, entry.mode).catch(() => {});
       await fs.chown(entry.target, entry.uid, entry.gid).catch(() => {});
       continue;
     }
-    if (await fileSha256(entry.source) !== entry.sha256) throw new Error(`Source changed since preflight: ${entry.relative}`);
+    if ((await fileSha256(entry.source)) !== entry.sha256)
+      throw new Error(`Source changed since preflight: ${entry.relative}`);
     if (entry.duplicate) {
-      if (await fileSha256(entry.target) !== entry.sha256) throw new Error(`Destination changed: ${entry.relative}`);
+      if ((await fileSha256(entry.target)) !== entry.sha256)
+        throw new Error(`Destination changed: ${entry.relative}`);
       await fs.unlink(entry.source);
     } else {
       if (await metadata(entry.target)) throw new Error(`Destination appeared: ${entry.relative}`);
       await fs.rename(entry.source, entry.target);
     }
-    if (await fileSha256(entry.target) !== entry.sha256) throw new Error(`Verification failed: ${entry.relative}`);
+    if ((await fileSha256(entry.target)) !== entry.sha256)
+      throw new Error(`Verification failed: ${entry.relative}`);
   }
-  for (const entry of [...entries].reverse()) if (entry.kind === "directory") await fs.rmdir(entry.source);
-  if ((await planLegacyMigration(sessionDirectory)).length) throw new Error(`Legacy entries remain: ${sessionDirectory}`);
-  return { files: entries.filter(e => e.kind === "file").length, bytes: entries.reduce((n, e) => n + (e.size ?? 0), 0) };
+  for (const entry of [...entries].reverse())
+    if (entry.kind === 'directory') await fs.rmdir(entry.source);
+  if ((await planLegacyMigration(sessionDirectory)).length)
+    throw new Error(`Legacy entries remain: ${sessionDirectory}`);
+  return {
+    files: entries.filter((e) => e.kind === 'file').length,
+    bytes: entries.reduce((n, e) => n + (e.size ?? 0), 0),
+  };
 }

@@ -1,21 +1,24 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { withSessionOwner } from "@/lib/api/middleware";
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { withSessionOwner } from '@/lib/api/middleware';
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
   return withSessionOwner(request, id, async ({ user }) => {
     const { newOwnerId } = await request.json();
-    if (!newOwnerId || typeof newOwnerId !== "string") {
-      return NextResponse.json({ error: "Identifiant du nouveau propriétaire requis" }, { status: 400 });
+    if (!newOwnerId || typeof newOwnerId !== 'string') {
+      return NextResponse.json(
+        { error: 'Identifiant du nouveau propriétaire requis' },
+        { status: 400 },
+      );
     }
 
     if (newOwnerId === user.id) {
-      return NextResponse.json({ error: "Vous êtes déjà propriétaire de cette session" }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Vous êtes déjà propriétaire de cette session' },
+        { status: 400 },
+      );
     }
 
     // Verify recipient is currently a member
@@ -30,14 +33,17 @@ export async function POST(
     });
 
     if (!recipientMember) {
-      return NextResponse.json({ error: "Le destinataire doit d'abord être invité comme collaborateur" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Le destinataire doit d'abord être invité comme collaborateur" },
+        { status: 400 },
+      );
     }
 
     // Verify recipient has free session quota
     const recipientOwnedCount = await prisma.sessionMember.count({
       where: {
         userId: newOwnerId,
-        role: "OWNER",
+        role: 'OWNER',
       },
     });
 
@@ -46,7 +52,7 @@ export async function POST(
         {
           error: `Le destinataire a atteint son quota (${recipientOwnedCount}/${recipientMember.user.sessionLimit} sessions). Il ne peut pas recevoir la session.`,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -59,7 +65,7 @@ export async function POST(
             sessionId: id,
           },
         },
-        data: { role: "OWNER" },
+        data: { role: 'OWNER' },
       }),
       prisma.sessionMember.update({
         where: {
@@ -68,7 +74,7 @@ export async function POST(
             sessionId: id,
           },
         },
-        data: { role: "COLLABORATOR" },
+        data: { role: 'COLLABORATOR' },
       }),
     ]);
 

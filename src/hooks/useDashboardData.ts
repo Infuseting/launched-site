@@ -1,11 +1,8 @@
-import { useState, useEffect } from 'react';
+import { authFetch, consumeTokenFromUrl, errorMessage } from '@/lib/browser-auth';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { presenceFormValue } from '@/components/session-discord-presence';
 import type { SessionPresence } from '@/lib/discord-presence';
-import type {
-  DashboardFormData,
-  DashboardUser,
-  SessionData,
-} from '@/types/dashboard';
+import type { DashboardFormData, DashboardUser, SessionData } from '@/types/dashboard';
 
 export function useDashboardData() {
   const [data, setData] = useState<{ user: DashboardUser; sessions: SessionData[] } | null>(null);
@@ -22,21 +19,14 @@ export function useDashboardData() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccessToast, setPasswordSuccessToast] = useState<string | null>(null);
 
+  const [sessionSaving, setSessionSaving] = useState(false);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const saveInFlight = useRef(false);
+
   // Modals
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editSession, setEditSession] = useState<SessionData | null>(null);
   const [collaboratorSession, setCollaboratorSession] = useState<SessionData | null>(null);
-  const sessionModalOpen = createModalOpen || Boolean(editSession);
-
-  useEffect(() => {
-    if (!sessionModalOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [sessionModalOpen]);
-
   // Form states
   const [formData, setFormData] = useState<DashboardFormData>({
     name: '',
@@ -59,77 +49,54 @@ export function useDashboardData() {
   const [collabError, setCollabError] = useState<string | null>(null);
   const [transferUserId, setTransferUserId] = useState('');
 
-  const getStoredToken = () => {
-    if (typeof window === 'undefined') return null;
-    const urlParams = new URLSearchParams(window.location.search);
-    const tokenFromUrl = urlParams.get('token');
-    if (tokenFromUrl) {
-      try {
-        localStorage.setItem('launched_token', tokenFromUrl);
-        document.cookie = `launched_session=${tokenFromUrl}; path=/; max-age=${30 * 24 * 3600}; SameSite=Lax`;
-        const cleanUrl = window.location.pathname;
-        window.history.replaceState({}, '', cleanUrl);
-      } catch (e) {
-        console.error('Error storing token:', e);
-      }
-      return tokenFromUrl;
-    }
-    return localStorage.getItem('launched_token');
-  };
+  const fetchDashboardData = useCallback(
+    (signal?: AbortSignal) =>
+      authFetch('/api/dashboard/me', { headers: { Accept: 'application/json' }, signal })
+        .then(async (response) => {
+          if (signal?.aborted) return;
+          setError(null);
+          setAuthError(new URLSearchParams(window.location.search).get('error'));
+          if (response.status === 401) {
+            setData(null);
+            return;
+          }
+          if (!response.ok) throw new Error('Erreur lors du chargement');
+          const json = await response.json();
+          if (!signal?.aborted) setData(json);
+        })
+        .catch((error: unknown) => {
+          if (!signal?.aborted)
+            setError(errorMessage(error, 'Impossible de charger le tableau de bord'));
+        })
+        .finally(() => {
+          if (!signal?.aborted) setLoading(false);
+        }),
+    [],
+  );
 
-  const authFetch = async (url: string, options: RequestInit = {}) => {
-    const token = getStoredToken();
-    const headers = new Headers(options.headers || {});
-    if (token && !headers.has('Authorization')) {
-      headers.set('Authorization', `Bearer ${token}`);
-    }
-    const res = await fetch(url, {
-      ...options,
-      credentials: 'include',
-      headers,
-    });
-    if (res.status === 401 && typeof window !== 'undefined') {
-      localStorage.removeItem('launched_token');
-    }
-    return res;
-  };
-
-  const fetchDashboardData = async () => {
-    try {
-      setLoading(true);
-      const res = await authFetch('/api/dashboard/me', {
-        headers: { Accept: 'application/json' },
-      });
-      if (res.status === 401) {
-        setData(null);
-        setError(null);
-        return;
-      }
-      if (!res.ok) throw new Error('Erreur lors du chargement');
-      const json = await res.json();
-      setData(json);
-    } catch (err: any) {
-      setError(err.message || 'Impossible de charger le tableau de bord');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlErr = urlParams.get('error');
-      if (urlErr) {
-        setAuthError(urlErr);
-      }
-    }
-    fetchDashboardData();
-  }, []);
+    consumeTokenFromUrl();
+    const controller = new AbortController();
+    void fetchDashboardData(controller.signal);
+    return () => {
+      controller.abort();
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
+  }, [fetchDashboardData]);
 
-  const copyToClipboard = (text: string, key: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey(null), 2000);
+  const copyToClipboard = async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopiedKey(null), 2000);
+    } catch {
+      alert('La copie est indisponible. Vous pouvez sélectionner et copier le texte manuellement.');
+    }
   };
 
   const handleCopyAllSftp = () => {
@@ -143,13 +110,16 @@ export function useDashboardData() {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
     let result = '';
     const randomValues = new Uint32Array(16);
-    if (typeof window !== 'undefined' && window.crypto) {
+    if (window.crypto) {
       window.crypto.getRandomValues(randomValues);
       for (let i = 0; i < 16; i++) {
         result += chars[randomValues[i] % chars.length];
       }
     } else {
-      result = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8);
+      setPasswordError(
+        'La génération sécurisée est indisponible. Saisissez un mot de passe ou demandez une génération au serveur.',
+      );
+      return;
     }
     setNewSftpPassword(result);
   };
@@ -185,28 +155,60 @@ export function useDashboardData() {
           ...prev,
           user: {
             ...prev.user,
-            sftp: prev.user.sftp ? { ...prev.user.sftp, password: json.password || json.sftpPassword } : null,
+            sftp: prev.user.sftp
+              ? { ...prev.user.sftp, password: json.password || json.sftpPassword }
+              : null,
           },
         };
       });
 
       setShowPassword(true);
-      if (typeof navigator !== 'undefined' && navigator.clipboard) {
-        navigator.clipboard.writeText(json.password || json.sftpPassword).catch(() => {});
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(json.password || json.sftpPassword);
+        copied = true;
+      } catch {
+        // Saving succeeded even when clipboard access is denied.
       }
       setPasswordModalOpen(false);
       setNewSftpPassword('');
-      setPasswordSuccessToast('Mot de passe SFTP mis à jour et copié dans le presse-papier !');
-      setTimeout(() => setPasswordSuccessToast(null), 5000);
-    } catch (err: any) {
-      setPasswordError(err.message || 'Impossible de mettre à jour le mot de passe');
+      setPasswordSuccessToast(
+        copied
+          ? 'Mot de passe SFTP mis à jour et copié dans le presse-papier !'
+          : 'Mot de passe SFTP mis à jour. La copie est indisponible.',
+      );
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setPasswordSuccessToast(null), 5000);
+    } catch (err) {
+      setPasswordError(errorMessage(err, 'Impossible de mettre à jour le mot de passe'));
     } finally {
       setPasswordLoading(false);
     }
   };
 
+  const mutate = async (
+    url: string,
+    options: RequestInit,
+    onSuccess: () => void,
+    onError: (message: string) => void = alert,
+  ) => {
+    try {
+      const response = await authFetch(url, options);
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || 'Impossible de terminer cette opération');
+      await fetchDashboardData();
+      onSuccess();
+    } catch (error) {
+      onError(errorMessage(error, 'Le serveur est indisponible. Réessayez.'));
+    }
+  };
+
   const handleSaveSession = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saveInFlight.current) return;
+    saveInFlight.current = true;
+    setSessionSaving(true);
+    setSessionError(null);
     const { mode, config } = formData.discordPresence;
     const discordPresence: SessionPresence | null = mode === 'custom' ? { mode, config } : null;
     const payload = {
@@ -227,99 +229,72 @@ export function useDashboardData() {
       links: formData.links.filter((l) => l.name && l.url),
     };
 
-    if (editSession) {
-      const res = await authFetch(`/api/dashboard/sessions/${editSession.id}`, {
-        method: 'PUT',
+    await mutate(
+      editSession ? `/api/dashboard/sessions/${editSession.id}` : '/api/dashboard/sessions',
+      {
+        method: editSession ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        await fetchDashboardData();
+      },
+      () => {
         setEditSession(null);
-      } else {
-        const err = await res.json();
-        alert(err.error || 'Erreur lors de la mise à jour');
-      }
-    } else {
-      const res = await authFetch('/api/dashboard/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        await fetchDashboardData();
         setCreateModalOpen(false);
-      } else {
-        const err = await res.json();
-        alert(err.error || 'Erreur lors de la création');
-      }
-    }
+      },
+      setSessionError,
+    );
+    saveInFlight.current = false;
+    setSessionSaving(false);
   };
 
   const handleDeleteSession = async (session: SessionData) => {
     if (!confirm(`Supprimer la session "${session.name}" et ses fichiers ?`)) return;
-    const res = await authFetch(`/api/dashboard/sessions/${session.id}`, { method: 'DELETE' });
-    if (res.ok) {
-      fetchDashboardData();
-    } else {
-      const err = await res.json();
-      alert(err.error || 'Erreur lors de la suppression');
-    }
+    await mutate(`/api/dashboard/sessions/${session.id}`, { method: 'DELETE' }, () => {});
   };
 
   const handleAddCollaborator = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!collaboratorSession || !collabUsername.trim()) return;
     setCollabError(null);
-
-    const res = await authFetch(`/api/dashboard/sessions/${collaboratorSession.id}/collaborators`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: collabUsername }),
-    });
-
-    const json = await res.json();
-    if (res.ok) {
-      setCollabUsername('');
-      fetchDashboardData();
-    } else {
-      setCollabError(json.error || 'Erreur');
-    }
+    await mutate(
+      `/api/dashboard/sessions/${collaboratorSession.id}/collaborators`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: collabUsername }),
+      },
+      () => setCollabUsername(''),
+      setCollabError,
+    );
   };
 
   const handleRemoveCollaborator = async (userId: string) => {
-    if (!collaboratorSession) return;
-    if (!confirm('Retirer ce collaborateur ?')) return;
-
-    const res = await authFetch(
-      `/api/dashboard/sessions/${collaboratorSession.id}/collaborators?userId=${userId}`,
-      { method: 'DELETE' }
+    if (!collaboratorSession || !confirm('Retirer ce collaborateur ?')) return;
+    await mutate(
+      `/api/dashboard/sessions/${collaboratorSession.id}/collaborators?userId=${encodeURIComponent(userId)}`,
+      { method: 'DELETE' },
+      () => {},
+      setCollabError,
     );
-    if (res.ok) {
-      fetchDashboardData();
-    }
   };
 
   const handleTransferOwnership = async () => {
     if (!collaboratorSession || !transferUserId) return;
-    if (!confirm('Transférer la possession de cette session ? Vous deviendrez collaborateur.')) return;
-
-    const res = await authFetch(`/api/dashboard/sessions/${collaboratorSession.id}/transfer`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ newOwnerId: transferUserId }),
-    });
-
-    const json = await res.json();
-    if (res.ok) {
-      setCollaboratorSession(null);
-      fetchDashboardData();
-    } else {
-      alert(json.error || 'Erreur de transfert');
-    }
+    if (!confirm('Transférer la possession de cette session ? Vous deviendrez collaborateur.'))
+      return;
+    await mutate(
+      `/api/dashboard/sessions/${collaboratorSession.id}/transfer`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newOwnerId: transferUserId }),
+      },
+      () => setCollaboratorSession(null),
+      setCollabError,
+    );
   };
 
   const openEdit = (s: SessionData) => {
+    setSessionError(null);
     let loader = 'vanilla';
     let version = '';
     if (s.fabric) {
@@ -349,7 +324,8 @@ export function useDashboardData() {
       allowedDiscordUsers: (s.access ?? []).map((entry) => ({
         identifier: entry.identifier,
         discordId: entry.discordId,
-        username: entry.user?.username ?? (/^\d{17,20}$/.test(entry.identifier) ? null : entry.identifier),
+        username:
+          entry.user?.username ?? (/^\d{17,20}$/.test(entry.identifier) ? null : entry.identifier),
         avatar: entry.user?.avatar ?? null,
       })),
       links: s.links.length > 0 ? s.links : [{ name: 'Discord', url: '', icon: '' }],
@@ -358,6 +334,7 @@ export function useDashboardData() {
   };
 
   const openCreate = () => {
+    setSessionError(null);
     if (!data) return;
     setFormData({
       name: '',
@@ -395,16 +372,20 @@ export function useDashboardData() {
     passwordLoading,
     passwordError,
     passwordSuccessToast,
+    dismissPasswordToast: () => setPasswordSuccessToast(null),
     generateRandomPassword,
     handleUpdatePassword,
     createModalOpen,
     setCreateModalOpen,
     editSession,
     setEditSession,
-    collaboratorSession,
+    collaboratorSession:
+      data?.sessions.find((session) => session.id === collaboratorSession?.id) ?? null,
     setCollaboratorSession,
     formData,
     setFormData,
+    sessionSaving,
+    sessionError,
     collabUsername,
     setCollabUsername,
     collabError,

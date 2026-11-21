@@ -1,32 +1,43 @@
-import { NextResponse } from "next/server";
-import fs from "fs/promises";
-import { prisma } from "@/lib/prisma";
-import { Prisma } from "@prisma/client";
-import { withSessionMember, withSessionOwner } from "@/lib/api/middleware";
-import { updateSessionSchema } from "@/lib/validations/session.schema";
-import { parsePresenceUpdate } from "@/lib/discord-presence";
-import { sessionLoaderUpdate } from "@/lib/session-loaders";
-import { parseAccessUpdate } from "@/lib/launcher-protocol";
-import { accessEntries } from "@/lib/launcher-auth";
-import { syncSftpUser, getSessionPhysicalPath } from "@/lib/sftpgo";
+import { NextResponse } from 'next/server';
+import fs from 'fs/promises';
+import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
+import { withSessionMember, withSessionOwner, validateInput } from '@/lib/api/middleware';
+import { updateSessionSchema } from '@/lib/validations/session.schema';
+import { parsePresenceUpdate } from '@/lib/discord-presence';
+import { sessionLoaderUpdate } from '@/lib/session-loaders';
+import { parseAccessUpdate } from '@/lib/launcher-protocol';
+import { accessEntries } from '@/lib/launcher-auth';
+import { syncSftpUser, getSessionPhysicalPath } from '@/lib/sftpgo';
 
-export async function PUT(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
   return withSessionMember(request, id, async () => {
     const rawBody = await request.json();
     const validated = updateSessionSchema.parse(rawBody);
 
-    const loaders = sessionLoaderUpdate(rawBody);
-    const access = parseAccessUpdate(rawBody);
-    const presence = parsePresenceUpdate(rawBody.discordPresence);
+    const loaders = validateInput(() => sessionLoaderUpdate(rawBody));
+    const access = validateInput(() => parseAccessUpdate(rawBody));
+    const presence = validateInput(() => parsePresenceUpdate(rawBody.discordPresence));
+
+    const appOrigin = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
+    const links = validated.links?.map((link) => {
+      const isDiscord =
+        link.url.toLowerCase().includes('discord') || link.name.toLowerCase().includes('discord');
+      return {
+        name: link.name,
+        url: link.url,
+        icon:
+          link.icon?.trim() || `${appOrigin}/assets/icons/${isDiscord ? 'discord' : 'website'}.svg`,
+      };
+    });
 
     const updated = await prisma.session.update({
       where: { id },
       data: {
+        // Nested writes commit settings, access entries and links together.
+        ...(links ? { links: { deleteMany: {}, create: links } } : {}),
         ...(validated.name ? { name: validated.name } : {}),
         ...(validated.minecraft ? { minecraft: validated.minecraft } : {}),
         ...loaders,
@@ -48,42 +59,21 @@ export async function PUT(
         ...(validated.welcome !== undefined ? { welcome: validated.welcome } : {}),
         ...(validated.jvmArg !== undefined ? { jvmArg: validated.jvmArg } : {}),
         ...(validated.credits !== undefined ? { credits: validated.credits } : {}),
-        hostname: validated.hostname !== undefined ? (validated.hostname ? validated.hostname.trim() : null) : undefined,
+        hostname:
+          validated.hostname !== undefined
+            ? validated.hostname
+              ? validated.hostname.trim()
+              : null
+            : undefined,
         ...(validated.crack !== undefined ? { crack: Boolean(validated.crack) } : {}),
       },
     });
-
-    if (Array.isArray(validated.links)) {
-      const appOrigin = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
-      const validLinks = validated.links.slice(0, 3).filter((l) => l.name && l.url);
-
-      await prisma.sessionLink.deleteMany({ where: { sessionId: id } });
-      if (validLinks.length > 0) {
-        await prisma.sessionLink.createMany({
-          data: validLinks.map((l) => {
-            const isDiscord = l.url.toLowerCase().includes("discord") || l.name.toLowerCase().includes("discord");
-            const defaultIcon = isDiscord
-              ? `${appOrigin}/assets/icons/discord.svg`
-              : `${appOrigin}/assets/icons/website.svg`;
-            return {
-              sessionId: id,
-              name: l.name.trim(),
-              url: l.url.trim(),
-              icon: l.icon && l.icon.trim() ? l.icon.trim() : defaultIcon,
-            };
-          }),
-        });
-      }
-    }
 
     return NextResponse.json({ success: true, session: updated });
   });
 }
 
-export async function DELETE(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
   return withSessionOwner(request, id, async () => {

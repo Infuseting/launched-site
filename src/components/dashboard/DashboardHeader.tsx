@@ -1,3 +1,5 @@
+import { clearStoredToken } from '@/lib/browser-auth';
+import Image from 'next/image';
 import React from 'react';
 import Link from 'next/link';
 import { Shield, LogOut } from 'lucide-react';
@@ -9,7 +11,7 @@ interface DashboardHeaderProps {
 
 export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ user }) => {
   return (
-    <header className="border-b border-white/10 bg-black/60 backdrop-blur-xl px-8 py-4 flex items-center justify-between sticky top-0 z-40">
+    <header className="border-b border-white/10 bg-black/60 backdrop-blur-xl px-4 sm:px-8 py-4 gap-4 flex-wrap flex items-center justify-between sticky top-0 z-40">
       <div className="flex items-center gap-3">
         <Link
           href="/"
@@ -21,7 +23,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ user }) => {
         <span className="text-xs text-zinc-400 font-medium">Espace Créateur</span>
       </div>
 
-      <div className="flex items-center gap-5">
+      <div className="flex items-center gap-3 sm:gap-5">
         {user.role === 'ADMIN' && (
           <Link
             href="/admin"
@@ -34,7 +36,14 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ user }) => {
 
         <div className="flex items-center gap-2.5 pl-2 border-l border-white/10">
           {user.avatar ? (
-            <img src={user.avatar} alt="" className="w-7 h-7 rounded-full border border-white/10" />
+            <Image
+              src={user.avatar}
+              alt=""
+              width={28}
+              height={28}
+              unoptimized
+              className="w-7 h-7 rounded-full border border-white/10"
+            />
           ) : (
             <div className="w-7 h-7 rounded-full bg-white/10" />
           )}
@@ -43,12 +52,9 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ user }) => {
 
         <a
           href="/api/auth/logout"
-          onClick={() => {
-            if (typeof window !== 'undefined') {
-              localStorage.removeItem('launched_token');
-            }
-          }}
+          onClick={clearStoredToken}
           title="Déconnexion"
+          aria-label="Déconnexion"
           className="text-zinc-500 hover:text-white transition p-1"
         >
           <LogOut className="w-4 h-4" />

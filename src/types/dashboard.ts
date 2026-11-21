@@ -32,7 +32,11 @@ export interface SessionData {
   crack: boolean;
   publicAccess: boolean;
   discordPresence: SessionPresence | null;
-  access: { identifier: string; discordId: string | null; user?: { username: string; avatar: string | null } | null }[];
+  access: {
+    identifier: string;
+    discordId: string | null;
+    user?: { username: string; avatar: string | null } | null;
+  }[];
   myRole: 'OWNER' | 'COLLABORATOR';
   links: LinkItem[];
   members: MemberInfo[];
@@ -66,7 +70,9 @@ export interface DashboardFormData {
   hostname: string;
   crack: boolean;
   publicAccess: boolean;
-  discordPresence: ReturnType<typeof import('@/components/session-discord-presence').presenceFormValue>;
+  discordPresence: ReturnType<
+    typeof import('@/components/session-discord-presence').presenceFormValue
+  >;
   allowedDiscordUsers: DiscordAccessUser[];
   links: LinkItem[];
 }

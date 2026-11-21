@@ -1,22 +1,22 @@
-import { NextResponse } from "next/server";
-import crypto from "crypto";
-import { prisma } from "@/lib/prisma";
-import { withAuth } from "@/lib/api/middleware";
-import { updatePasswordSchema } from "@/lib/validations/sftp.schema";
-import { syncSftpUser } from "@/lib/sftpgo";
+import { NextResponse } from 'next/server';
+import crypto from 'crypto';
+import { prisma } from '@/lib/prisma';
+import { withAuth } from '@/lib/api/middleware';
+import { updatePasswordSchema } from '@/lib/validations/sftp.schema';
+import { syncSftpUser } from '@/lib/sftpgo';
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   return withAuth(request, async (user) => {
     if (!user.sftpUsername) {
-      return NextResponse.json({ error: "Compte SFTP introuvable" }, { status: 400 });
+      return NextResponse.json({ error: 'Compte SFTP introuvable' }, { status: 400 });
     }
 
-    const rawBody = await request.json().catch(() => ({}));
+    const rawBody = await request.json();
     const validated = updatePasswordSchema.parse(rawBody);
 
-    const newPassword = validated.password || crypto.randomBytes(8).toString("hex");
+    const newPassword = validated.password || crypto.randomBytes(8).toString('hex');
 
     // Fetch user's active sessions for SFTPGo mapping
     const members = await prisma.sessionMember.findMany({
@@ -40,8 +40,8 @@ export async function POST(request: Request) {
 
     if (!sftpOk) {
       return NextResponse.json(
-        { error: "Échec de la mise à jour sur le serveur SFTP" },
-        { status: 502 }
+        { error: 'Échec de la mise à jour sur le serveur SFTP' },
+        { status: 502 },
       );
     }
 

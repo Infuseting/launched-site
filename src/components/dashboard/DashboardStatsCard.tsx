@@ -53,7 +53,8 @@ export const DashboardStatsCard: React.FC<DashboardStatsCardProps> = ({
 
       {user.sessionLimit === 0 && (
         <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 text-xs text-amber-300">
-          Votre compte n'a pas encore de quota de sessions. Contactez un administrateur pour l'activer.
+          Votre compte n&apos;a pas encore de quota de sessions. Contactez un administrateur pour
+          l&apos;activer.
         </div>
       )}
     </>

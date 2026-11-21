@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { authFetch } from '@/lib/browser-auth';
 import { RefreshCw, AlertCircle, Server } from 'lucide-react';
 import { useDashboardData } from '@/hooks/useDashboardData';
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
@@ -29,6 +30,7 @@ export default function DashboardPage() {
     passwordLoading,
     passwordError,
     passwordSuccessToast,
+    dismissPasswordToast,
     generateRandomPassword,
     handleUpdatePassword,
     createModalOpen,
@@ -38,6 +40,8 @@ export default function DashboardPage() {
     collaboratorSession,
     setCollaboratorSession,
     formData,
+    sessionSaving,
+    sessionError,
     setFormData,
     collabUsername,
     setCollabUsername,
@@ -74,7 +78,8 @@ export default function DashboardPage() {
         </div>
         <h1 className="text-xl font-bold mb-2">Rejoignez notre Discord</h1>
         <p className="text-zinc-400 text-sm mb-6 max-w-md">
-          L'accès à l'espace créateur est réservé aux membres du serveur Discord officiel de Launched. Rejoignez le serveur pour pouvoir créer et gérer vos sessions.
+          L&apos;accès à l&apos;espace créateur est réservé aux membres du serveur Discord officiel
+          de Launched. Rejoignez le serveur pour pouvoir créer et gérer vos sessions.
         </p>
         <div className="flex flex-col sm:flex-row items-center gap-3">
           <a
@@ -89,7 +94,7 @@ export default function DashboardPage() {
             href="/api/auth/discord/login"
             className="w-full sm:w-auto px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white text-sm font-semibold rounded-lg transition"
           >
-            J'ai rejoint, se connecter
+            J&apos;ai rejoint, se connecter
           </a>
         </div>
       </div>
@@ -103,7 +108,10 @@ export default function DashboardPage() {
           <AlertCircle className="w-6 h-6 text-zinc-400" />
         </div>
         <h1 className="text-xl font-bold mb-2">Authentification requise</h1>
-        <p className="text-zinc-500 text-sm mb-6 max-w-sm">Connectez-vous avec votre compte Discord pour accéder à votre espace créateur.</p>
+        <p className="text-zinc-500 text-sm mb-6 max-w-sm">
+          {error ??
+            'Connectez-vous avec votre compte Discord pour accéder à votre espace créateur.'}
+        </p>
         <a
           href="/api/auth/discord/login"
           className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition"
@@ -116,7 +124,7 @@ export default function DashboardPage() {
 
   const { user, sessions } = data;
   const canCreateSession = user.ownedSessionsCount < user.sessionLimit;
-  const quotaGb = (user.diskQuotaBytes / (1024 ** 3)).toFixed(0);
+  const quotaGb = (user.diskQuotaBytes / 1024 ** 3).toFixed(0);
 
   return (
     <div className="min-h-screen bg-[#050505] text-white">
@@ -142,7 +150,7 @@ export default function DashboardPage() {
             setNewSftpPassword('');
             setPasswordModalOpen(true);
           }}
-          onDismissToast={() => {}}
+          onDismissToast={dismissPasswordToast}
         />
 
         <section className="space-y-4">
@@ -150,7 +158,9 @@ export default function DashboardPage() {
             <div className="border border-dashed border-white/10 rounded-xl p-12 text-center">
               <Server className="w-8 h-8 text-zinc-600 mx-auto mb-3" />
               <p className="text-sm font-semibold text-zinc-300">Aucune session configurée</p>
-              <p className="text-xs text-zinc-500 mt-1">Créez votre première session pour commencer à synchroniser vos fichiers.</p>
+              <p className="text-xs text-zinc-500 mt-1">
+                Créez votre première session pour commencer à synchroniser vos fichiers.
+              </p>
               {canCreateSession && (
                 <button
                   type="button"
@@ -178,6 +188,8 @@ export default function DashboardPage() {
       </main>
 
       <CreateOrEditSessionModal
+        isSaving={sessionSaving}
+        error={sessionError}
         isOpen={createModalOpen || Boolean(editSession)}
         editSession={editSession}
         formData={formData}
@@ -188,12 +200,8 @@ export default function DashboardPage() {
           setEditSession(null);
         }}
         searchUsers={async (query, signal) => {
-          const res = await fetch(`/api/dashboard/users?q=${encodeURIComponent(query)}`, {
+          const res = await authFetch(`/api/dashboard/users?q=${encodeURIComponent(query)}`, {
             signal,
-            credentials: 'include',
-            headers: typeof window !== 'undefined' && localStorage.getItem('launched_token')
-              ? { Authorization: `Bearer ${localStorage.getItem('launched_token')}` }
-              : {},
           });
           if (!res.ok) throw new Error('Recherche indisponible');
           return res.json();

@@ -14,10 +14,22 @@ const root = new URL('../', import.meta.url);
 const storage = await mkdtemp(path.join(tmpdir(), 'launched-auth-'));
 after(() => rm(storage, { recursive: true, force: true }));
 const moduleUrls = new Map();
-const virtual = source => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
+const virtual = (source) => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
 const players = [
-  { id: 'player-1', discordId: '123456789012345678', username: 'first.user', avatar: null, role: 'PLAYER' },
-  { id: 'player-2', discordId: '234567890123456789', username: 'other.user', avatar: null, role: 'PLAYER' },
+  {
+    id: 'player-1',
+    discordId: '123456789012345678',
+    username: 'first.user',
+    avatar: null,
+    role: 'PLAYER',
+  },
+  {
+    id: 'player-2',
+    discordId: '234567890123456789',
+    username: 'other.user',
+    avatar: null,
+    role: 'PLAYER',
+  },
 ];
 const tokens = new Map();
 const codes = new Map();
@@ -25,37 +37,75 @@ let sessions = [];
 let cookies = new Map();
 let readinessError = null;
 let readinessQueries = 0;
-const matches = (row, query) => Object.entries(query).every(([key, value]) => {
-  if (key === 'OR') return value.some(branch => matches(row, branch));
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    if ('some' in value) return (row[key] ?? []).some(item => matches(item, value.some));
-    if ('gt' in value) return row[key] > value.gt;
-    if ('lte' in value) return row[key] <= value.lte;
-    if ('in' in value) return value.in.includes(row[key]);
-  }
-  return row[key] === value;
-});
+const matches = (row, query) =>
+  Object.entries(query).every(([key, value]) => {
+    if (key === 'OR') return value.some((branch) => matches(row, branch));
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      if ('some' in value) return (row[key] ?? []).some((item) => matches(item, value.some));
+      if ('gt' in value) return row[key] > value.gt;
+      if ('lte' in value) return row[key] <= value.lte;
+      if ('in' in value) return value.in.includes(row[key]);
+    }
+    return row[key] === value;
+  });
 const db = {
   launcherToken: {
     findUnique: async ({ where }) => tokens.get(where.tokenHash) ?? null,
-    create: async ({ data }) => tokens.set(data.tokenHash, { ...data, id: data.tokenHash, user: players.find(p => p.id === data.userId) }),
-    updateMany: async ({ where, data }) => { let count = 0; for (const row of tokens.values()) if (matches(row, where)) { Object.assign(row, data); count++; } return { count }; },
-    deleteMany: async ({ where }) => { let count = 0; for (const [key, row] of tokens) if (matches(row, where)) { tokens.delete(key); count++; } return { count }; },
+    create: async ({ data }) =>
+      tokens.set(data.tokenHash, {
+        ...data,
+        id: data.tokenHash,
+        user: players.find((p) => p.id === data.userId),
+      }),
+    updateMany: async ({ where, data }) => {
+      let count = 0;
+      for (const row of tokens.values())
+        if (matches(row, where)) {
+          Object.assign(row, data);
+          count++;
+        }
+      return { count };
+    },
+    deleteMany: async ({ where }) => {
+      let count = 0;
+      for (const [key, row] of tokens)
+        if (matches(row, where)) {
+          tokens.delete(key);
+          count++;
+        }
+      return { count };
+    },
   },
   launcherCode: {
-    findFirst: async () => { readinessQueries++; if (readinessError) throw readinessError; return null; },
+    findFirst: async () => {
+      readinessQueries++;
+      if (readinessError) throw readinessError;
+      return null;
+    },
     findUnique: async ({ where }) => codes.get(where.codeHash) ?? null,
-    create: async ({ data }) => codes.set(data.codeHash, { ...data, user: players.find(p => p.id === data.userId) }),
-    deleteMany: async ({ where }) => { let count = 0; for (const [key, row] of codes) if (matches(row, where)) { codes.delete(key); count++; } return { count }; },
+    create: async ({ data }) =>
+      codes.set(data.codeHash, { ...data, user: players.find((p) => p.id === data.userId) }),
+    deleteMany: async ({ where }) => {
+      let count = 0;
+      for (const [key, row] of codes)
+        if (matches(row, where)) {
+          codes.delete(key);
+          count++;
+        }
+      return { count };
+    },
   },
   session: {
-    findMany: async ({ where }) => sessions.filter(row => matches(row, where)),
-    findFirst: async ({ where }) => sessions.find(row => matches(row, where)) ?? null,
+    findMany: async ({ where }) => sessions.filter((row) => matches(row, where)),
+    findFirst: async ({ where }) => sessions.find((row) => matches(row, where)) ?? null,
   },
   user: {
     upsert: async ({ where, create, update }) => {
-      const found = players.find(p => p.discordId === where.discordId);
-      if (found) { Object.assign(found, update); return found; }
+      const found = players.find((p) => p.discordId === where.discordId);
+      if (found) {
+        Object.assign(found, update);
+        return found;
+      }
       const player = { id: `player-${players.length + 1}`, ...create };
       players.push(player);
       return player;
@@ -63,33 +113,51 @@ const db = {
   },
   sessionAccess: {
     updateMany: async ({ where, data }) => {
-      for (const session of sessions) for (const entry of session.access) if (matches(entry, where)) Object.assign(entry, data);
+      for (const session of sessions)
+        for (const entry of session.access) if (matches(entry, where)) Object.assign(entry, data);
     },
   },
-  $transaction: callback => callback(db),
+  $transaction: (callback) => callback(db),
 };
 globalThis.__launcherTestDb = db;
-globalThis.__launcherTestCookies = { get: name => cookies.has(name) ? { value: cookies.get(name) } : undefined, delete: name => cookies.delete(name) };
+globalThis.__launcherTestCookies = {
+  get: (name) => (cookies.has(name) ? { value: cookies.get(name) } : undefined),
+  delete: (name) => cookies.delete(name),
+};
 
 async function load(relative) {
   if (moduleUrls.has(relative)) return moduleUrls.get(relative);
-  let source = ts.transpileModule(await readFile(new URL(relative, root), 'utf8'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
+  let source = ts.transpileModule(await readFile(new URL(relative, root), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
   const replacements = {
     '@/lib/prisma': virtual('export const prisma = globalThis.__launcherTestDb;'),
     './prisma': virtual('export const prisma = globalThis.__launcherTestDb;'),
     'next/server': pathToFileURL(require.resolve('next/server')).href,
-    'next/headers': virtual('export async function cookies() { return globalThis.__launcherTestCookies; }'),
-    '@/lib/auth': virtual('export const createOAuthState=()=>"signed-state"; export const verifyOAuthState=s=>s==="signed-state"; export const isDiscordAdmin=()=>false; export const createSessionToken=()=>{throw Error("Player must not get creator token")}; export const setSessionCookie=()=>{throw Error("Player must not get creator cookie")};'),
-    '@/lib/sftpgo': virtual(`import path from 'node:path'; export const getSessionPhysicalPath=id=>path.join(${JSON.stringify(storage)},id); export async function ensureSessionDirectories(){}; export const syncSftpUser=()=>{throw Error('Player must not get SFTP')};`),
+    'next/headers': virtual(
+      'export async function cookies() { return globalThis.__launcherTestCookies; }',
+    ),
+    '@/lib/auth': virtual(
+      'export const createOAuthState=()=>"signed-state"; export const verifyOAuthState=s=>s==="signed-state"; export const isDiscordAdmin=()=>false; export const createSessionToken=()=>{throw Error("Player must not get creator token")}; export const setSessionCookie=()=>{throw Error("Player must not get creator cookie")};',
+    ),
+    '@/lib/sftpgo': virtual(
+      `import path from 'node:path'; export const getSessionPhysicalPath=id=>path.join(${JSON.stringify(storage)},id); export async function ensureSessionDirectories(){}; export const syncSftpUser=()=>{throw Error('Player must not get SFTP')};`,
+    ),
   };
-  for (const spec of [...source.matchAll(/from ["']([^"']+)["']/g)].map(match => match[1])) {
+  for (const spec of [...source.matchAll(/from ["']([^"']+)["']/g)].map((match) => match[1])) {
     let replacement = replacements[spec];
     if (spec === '@/lib/launcher-auth') replacement = await load('src/lib/launcher-auth.ts');
     if (spec === '@/lib/discord-presence') replacement = await load('src/lib/discord-presence.ts');
-    if (spec === '@/lib/session-background' || spec === './session-background') replacement = await load('src/lib/session-background.ts');
-    if (spec === './session-sync.mjs') replacement = pathToFileURL(path.join(fileURLToPath(root), 'src/lib/session-sync.mjs')).href;
-    if (spec === './launcher-protocol' || spec === '@/lib/launcher-protocol') replacement = await load('src/lib/launcher-protocol.ts');
-    if (replacement) source = source.replaceAll(`from "${spec}"`, `from ${JSON.stringify(replacement)}`).replaceAll(`from '${spec}'`, `from ${JSON.stringify(replacement)}`);
+    if (spec === '@/lib/session-background' || spec === './session-background')
+      replacement = await load('src/lib/session-background.ts');
+    if (spec === './session-sync.mjs')
+      replacement = pathToFileURL(path.join(fileURLToPath(root), 'src/lib/session-sync.mjs')).href;
+    if (spec === './launcher-protocol' || spec === '@/lib/launcher-protocol')
+      replacement = await load('src/lib/launcher-protocol.ts');
+    if (replacement)
+      source = source
+        .replaceAll(`from "${spec}"`, `from ${JSON.stringify(replacement)}`)
+        .replaceAll(`from '${spec}'`, `from ${JSON.stringify(replacement)}`);
   }
   const url = virtual(source);
   moduleUrls.set(relative, url);
@@ -103,22 +171,44 @@ const list = await import(await load('src/app/sessions/route.ts'));
 const callback = await import(await load('src/app/api/auth/discord/callback/route.ts'));
 const login = await import(await load('src/app/api/auth/discord/login/route.ts'));
 const ready = await import(await load('src/app/api/auth/launcher/ready/route.ts'));
-const routes = await Promise.all([
-  'src/app/api/sessions/[slug]/assets.json/route.ts',
-  'src/app/api/sessions/[slug]/sync/route.ts',
-  'src/app/api/sessions/[slug]/sync/[...path]/route.ts',
-  'src/app/api/sessions/[slug]/assets/[...file]/route.ts',
-].map(async file => import(await load(file))));
+const routes = await Promise.all(
+  [
+    'src/app/api/sessions/[slug]/assets.json/route.ts',
+    'src/app/api/sessions/[slug]/sync/route.ts',
+    'src/app/api/sessions/[slug]/sync/[...path]/route.ts',
+    'src/app/api/sessions/[slug]/assets/[...file]/route.ts',
+  ].map(async (file) => import(await load(file))),
+);
 const credential = `ln_${'a'.repeat(43)}`;
 const authorized = () => ({ Authorization: `Bearer ${credential}` });
-const request = (route = '/sessions', headers = {}) => new Request(`https://launcher.test${route}`, { headers });
-const post = body => new Request('https://launcher.test/api/auth/launcher/token', { method: 'POST', body: JSON.stringify(body) });
+const request = (route = '/sessions', headers = {}) =>
+  new Request(`https://launcher.test${route}`, { headers });
+const post = (body) =>
+  new Request('https://launcher.test/api/auth/launcher/token', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
 function resetToken() {
-  tokens.set(hashCredential(credential), { id: hashCredential(credential), tokenHash: hashCredential(credential), user: players[0], userId: players[0].id, expiresAt: new Date(Date.now() + 60_000) });
+  tokens.set(hashCredential(credential), {
+    id: hashCredential(credential),
+    tokenHash: hashCredential(credential),
+    user: players[0],
+    userId: players[0].id,
+    expiresAt: new Date(Date.now() + 60_000),
+  });
 }
 
 test('sync manifests and downloads preserve optional groups, hashes and legacy compatibility', async () => {
-  sessions = [{ id: 'optional-contract', slug: 'optional-contract', name: 'Optional', publicAccess: true, access: [], members: [] }];
+  sessions = [
+    {
+      id: 'optional-contract',
+      slug: 'optional-contract',
+      name: 'Optional',
+      publicAccess: true,
+      access: [],
+      members: [],
+    },
+  ];
   const syncRoot = path.join(storage, 'optional-contract', 'sync');
   const files = [
     ['mandatory/mods/api.jar', 'mandatory'],
@@ -139,31 +229,46 @@ test('sync manifests and downloads preserve optional groups, hashes and legacy c
   assert.equal(response.status, 200);
   const manifest = await response.json();
   for (const [name, type] of files) {
-    const entry = manifest.find(file => file.name === name);
+    const entry = manifest.find((file) => file.name === name);
     assert.ok(entry, name);
     assert.equal(entry.type, type);
     assert.equal(entry.size, String(Buffer.byteLength(`bytes:${name}`)));
     assert.equal(entry.md5, createHash('md5').update(`bytes:${name}`).digest('hex'));
-    const download = await routes[2].GET(request(), { params: Promise.resolve({ slug: 'optional-contract', path: name.split('/') }) });
+    const download = await routes[2].GET(request(), {
+      params: Promise.resolve({ slug: 'optional-contract', path: name.split('/') }),
+    });
     assert.equal(download.status, 200);
     assert.equal(await download.text(), `bytes:${name}`);
   }
-  assert.equal(manifest.find(entry => entry.name === 'optional/mods/client/').type, 'optional');
+  assert.equal(manifest.find((entry) => entry.name === 'optional/mods/client/').type, 'optional');
   for (const value of ['true', '1']) {
-    const legacy = await (await routes[1].GET(request(`/api/sessions/optional-contract/sync?v1=${value}`), params())).json();
-    const api = legacy.find(file => file.name === 'mods/api.jar');
+    const legacy = await (
+      await routes[1].GET(request(`/api/sessions/optional-contract/sync?v1=${value}`), params())
+    ).json();
+    const api = legacy.find((file) => file.name === 'mods/api.jar');
     assert.ok(api);
     assert.equal(api.md5, createHash('md5').update('bytes:mandatory/mods/api.jar').digest('hex'));
-    assert.ok(legacy.some(file => file.name === 'config/nested/mandatory/keep.toml'));
-    assert.ok(legacy.some(file => file.name === 'mandatory-extra/unchanged.txt'));
-    const mods = legacy.find(file => file.name === 'mods/');
+    assert.ok(legacy.some((file) => file.name === 'config/nested/mandatory/keep.toml'));
+    assert.ok(legacy.some((file) => file.name === 'mandatory-extra/unchanged.txt'));
+    const mods = legacy.find((file) => file.name === 'mods/');
     assert.equal(mods.md5, createHash('md5').update('mods/').digest('hex'));
-    assert.ok(legacy.some(file => file.name === 'mods/legacy.jar'));
-    assert.ok(legacy.every(file => file.name !== '' && !file.name.startsWith('mandatory/') && !file.name.startsWith('optional/') && file.type === undefined));
-    for (const entry of legacy.filter(file => !file.name.endsWith('/'))) {
-      const download = await routes[2].GET(request(`/api/sessions/optional-contract/sync/${entry.name}`), {
-        params: Promise.resolve({ slug: 'optional-contract', path: entry.name.split('/') }),
-      });
+    assert.ok(legacy.some((file) => file.name === 'mods/legacy.jar'));
+    assert.ok(
+      legacy.every(
+        (file) =>
+          file.name !== '' &&
+          !file.name.startsWith('mandatory/') &&
+          !file.name.startsWith('optional/') &&
+          file.type === undefined,
+      ),
+    );
+    for (const entry of legacy.filter((file) => !file.name.endsWith('/'))) {
+      const download = await routes[2].GET(
+        request(`/api/sessions/optional-contract/sync/${entry.name}`),
+        {
+          params: Promise.resolve({ slug: 'optional-contract', path: entry.name.split('/') }),
+        },
+      );
       assert.equal(download.status, 200, `v1 download failed: ${entry.name}`);
       const bytes = Buffer.from(await download.arrayBuffer());
       assert.equal(createHash('md5').update(bytes).digest('hex'), entry.md5);
@@ -193,7 +298,8 @@ test('download aliases preserve explicit paths, root files and the session files
     await mkdir(path.dirname(path.join(syncRoot, name)), { recursive: true });
     await writeFile(path.join(syncRoot, name), content);
   }
-  const download = parts => routes[2].GET(request(), { params: Promise.resolve({ slug, path: parts.split('/') }) });
+  const download = (parts) =>
+    routes[2].GET(request(), { params: Promise.resolve({ slug, path: parts.split('/') }) });
   for (const [name, expected] of [
     ['mods/only-mandatory.jar', 'mandatory'],
     ['mandatory/mods/only-mandatory.jar', 'mandatory'],
@@ -214,13 +320,26 @@ test('download aliases preserve explicit paths, root files and the session files
   const outside = path.join(storage, 'outside-downloads');
   await mkdir(outside, { recursive: true });
   await writeFile(path.join(outside, 'secret.jar'), 'secret');
-  await symlink(outside, path.join(syncRoot, 'mandatory', 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
+  await symlink(
+    outside,
+    path.join(syncRoot, 'mandatory', 'linked'),
+    process.platform === 'win32' ? 'junction' : 'dir',
+  );
   assert.equal((await download('linked/secret.jar')).status, 403);
   assert.equal((await download('mandatory/linked/secret.jar')).status, 403);
 });
 
 test('storage failures never return a successful empty or partial sync manifest', async () => {
-  sessions = [{ id: 'broken-storage', slug: 'broken-storage', name: 'Broken', publicAccess: true, access: [], members: [] }];
+  sessions = [
+    {
+      id: 'broken-storage',
+      slug: 'broken-storage',
+      name: 'Broken',
+      publicAccess: true,
+      access: [],
+      members: [],
+    },
+  ];
   await mkdir(path.join(storage, 'broken-storage'), { recursive: true });
   // A file where the sync directory should be forces a real ENOTDIR storage error.
   await writeFile(path.join(storage, 'broken-storage', 'sync'), 'unavailable storage');
@@ -240,9 +359,14 @@ test('storage failures never return a successful empty or partial sync manifest'
 test('bearer is mandatory, expiry is enforced, use renews the session, logout revokes it', async () => {
   resetToken();
   assert.equal(await auth.getLauncherUser(request()), null);
-  assert.equal(await auth.getLauncherUser(request('/', { cookie: `launched_session=${credential}` })), null);
+  assert.equal(
+    await auth.getLauncherUser(request('/', { cookie: `launched_session=${credential}` })),
+    null,
+  );
   assert.equal((await auth.getLauncherUser(request('/', authorized()))).id, players[0].id);
-  assert.ok(tokens.get(hashCredential(credential)).expiresAt > new Date(Date.now() + 89 * 24 * 3600_000));
+  assert.ok(
+    tokens.get(hashCredential(credential)).expiresAt > new Date(Date.now() + 89 * 24 * 3600_000),
+  );
   tokens.get(hashCredential(credential)).expiresAt = new Date(0);
   assert.equal(await auth.getLauncherUser(request('/', authorized())), null);
   resetToken();
@@ -253,46 +377,127 @@ test('bearer is mandatory, expiry is enforced, use renews the session, logout re
 test('code exchange verifies PKCE, expiry, single use, and stores only the token hash', async () => {
   const verifier = 'v'.repeat(43);
   const code = 'c'.repeat(43);
-  await db.launcherCode.create({ data: { codeHash: hashCredential(code), userId: players[0].id, challenge: pkceChallenge(verifier), expiresAt: new Date(Date.now() + 60_000) } });
+  await db.launcherCode.create({
+    data: {
+      codeHash: hashCredential(code),
+      userId: players[0].id,
+      challenge: pkceChallenge(verifier),
+      expiresAt: new Date(Date.now() + 60_000),
+    },
+  });
   assert.equal((await exchange.POST(post({ code, verifier: 'x'.repeat(43) }))).status, 401);
-  const results = await Promise.all([exchange.POST(post({ code, verifier })), exchange.POST(post({ code, verifier }))]);
-  assert.deepEqual(results.map(r => r.status).sort(), [200, 401]);
-  const payload = await results.find(r => r.status === 200).json();
+  const results = await Promise.all([
+    exchange.POST(post({ code, verifier })),
+    exchange.POST(post({ code, verifier })),
+  ]);
+  assert.deepEqual(results.map((r) => r.status).sort(), [200, 401]);
+  const payload = await results.find((r) => r.status === 200).json();
   assert.ok(payload.token.startsWith('ln_'));
   assert.ok(tokens.has(hashCredential(payload.token)));
   assert.equal(tokens.has(payload.token), false);
   assert.equal(payload.user.role, undefined);
-  await db.launcherCode.create({ data: { codeHash: hashCredential(code), userId: players[0].id, challenge: pkceChallenge(verifier), expiresAt: new Date(0) } });
+  await db.launcherCode.create({
+    data: {
+      codeHash: hashCredential(code),
+      userId: players[0].id,
+      challenge: pkceChallenge(verifier),
+      expiresAt: new Date(0),
+    },
+  });
   assert.equal((await exchange.POST(post({ code, verifier }))).status, 401);
 });
 
 test('listing filters by authenticated identity and ignores the retired visibility switch', async () => {
   resetToken();
-  const base = { minecraft: '1.21', syncDir: 'mods', welcome: '', jvmArg: '', credits: '', links: [], members: [], access: [] };
-  const customPresence = { applicationId: '234567890123456789', showElapsed: true, activity: { type: 0, details: 'Sur le serveur privé' } };
+  const base = {
+    minecraft: '1.21',
+    syncDir: 'mods',
+    welcome: '',
+    jvmArg: '',
+    credits: '',
+    links: [],
+    members: [],
+    access: [],
+  };
+  const customPresence = {
+    applicationId: '234567890123456789',
+    showElapsed: true,
+    activity: { type: 0, details: 'Sur le serveur privé' },
+  };
   sessions = [
-    { ...base, id: 'public', slug: 'public', name: 'Public', publicAccess: true, showInLauncher: true },
-    { ...base, id: 'private', slug: 'private', name: 'Private', publicAccess: false, showInLauncher: true, access: [{ discordId: players[0].discordId }], discordPresence: { mode: 'custom', config: customPresence } },
-    { ...base, id: 'other', slug: 'other', name: 'Other', publicAccess: false, showInLauncher: true, access: [{ discordId: players[1].discordId }] },
-    { ...base, id: 'hidden', slug: 'hidden', name: 'Hidden', publicAccess: true, showInLauncher: false },
-    { ...base, id: 'creator', slug: 'creator', name: 'Creator', publicAccess: false, showInLauncher: true, members: [{ userId: players[0].id }] },
+    {
+      ...base,
+      id: 'public',
+      slug: 'public',
+      name: 'Public',
+      publicAccess: true,
+      showInLauncher: true,
+    },
+    {
+      ...base,
+      id: 'private',
+      slug: 'private',
+      name: 'Private',
+      publicAccess: false,
+      showInLauncher: true,
+      access: [{ discordId: players[0].discordId }],
+      discordPresence: { mode: 'custom', config: customPresence },
+    },
+    {
+      ...base,
+      id: 'other',
+      slug: 'other',
+      name: 'Other',
+      publicAccess: false,
+      showInLauncher: true,
+      access: [{ discordId: players[1].discordId }],
+    },
+    {
+      ...base,
+      id: 'hidden',
+      slug: 'hidden',
+      name: 'Hidden',
+      publicAccess: true,
+      showInLauncher: false,
+    },
+    {
+      ...base,
+      id: 'creator',
+      slug: 'creator',
+      name: 'Creator',
+      publicAccess: false,
+      showInLauncher: true,
+      members: [{ userId: players[0].id }],
+    },
   ];
-  assert.deepEqual((await (await list.GET(request())).json()).map(s => s.name), ['Public', 'Hidden']);
+  assert.deepEqual(
+    (await (await list.GET(request())).json()).map((s) => s.name),
+    ['Public', 'Hidden'],
+  );
   const response = await list.GET(request('/sessions', authorized()));
   assert.equal(response.headers.get('cache-control'), 'private, no-store');
   const visible = await response.json();
-  assert.deepEqual(visible.map(s => s.name), ['Public', 'Private', 'Hidden', 'Creator']);
+  assert.deepEqual(
+    visible.map((s) => s.name),
+    ['Public', 'Private', 'Hidden', 'Creator'],
+  );
   assert.deepEqual(visible[1].discordPresence, customPresence);
   assert.equal(visible[0].discordPresence, undefined);
-  assert.equal((await auth.authorizeSession(request('/', authorized()), 'hidden')).session.id, 'hidden');
+  assert.equal(
+    (await auth.authorizeSession(request('/', authorized()), 'hidden')).session.id,
+    'hidden',
+  );
   await mkdir(path.join(storage, 'private', 'sync', 'mods'), { recursive: true });
   await mkdir(path.join(storage, 'private', 'assets'), { recursive: true });
   await writeFile(path.join(storage, 'private', 'sync', 'mods', 'test.jar'), 'private mod');
   await writeFile(path.join(storage, 'private', 'assets', 'logo.png'), 'private logo');
   for (const route of routes) {
-    const params = slug => ({ params: Promise.resolve({ slug, path: ['mods', 'test.jar'], file: ['logo.png'] }) });
+    const params = (slug) => ({
+      params: Promise.resolve({ slug, path: ['mods', 'test.jar'], file: ['logo.png'] }),
+    });
     assert.equal((await route.GET(request(), params('private'))).status, 404);
-    for (const slug of ['other', 'missing']) assert.equal((await route.GET(request('/', authorized()), params(slug))).status, 404);
+    for (const slug of ['other', 'missing'])
+      assert.equal((await route.GET(request('/', authorized()), params(slug))).status, 404);
     const allowed = await route.GET(request('/', authorized()), params('private'));
     assert.equal(allowed.status, 200);
     assert.equal(allowed.headers.get('cache-control'), 'private, no-store');
@@ -300,11 +505,23 @@ test('listing filters by authenticated identity and ignores the retired visibili
   }
   // Revoking access affects a previously authorized token immediately.
   sessions[1].access = [];
-  assert.equal((await auth.authorizeSession(request('/', authorized()), 'private')).response.status, 404);
+  assert.equal(
+    (await auth.authorizeSession(request('/', authorized()), 'private')).response.status,
+    404,
+  );
 });
 
 test('guests can download only public session metadata and files, including after access changes', async () => {
-  const base = { minecraft: '1.21', syncDir: 'mods', welcome: '', jvmArg: '', credits: '', links: [], members: [], access: [] };
+  const base = {
+    minecraft: '1.21',
+    syncDir: 'mods',
+    welcome: '',
+    jvmArg: '',
+    credits: '',
+    links: [],
+    members: [],
+    access: [],
+  };
   sessions = [
     { ...base, id: 'public-guest', slug: 'public-guest', name: 'Public', publicAccess: true },
     { ...base, id: 'private-guest', slug: 'private-guest', name: 'Private', publicAccess: false },
@@ -315,27 +532,58 @@ test('guests can download only public session metadata and files, including afte
   await writeFile(path.join(storage, 'public-guest', 'assets', 'logo.png'), 'public logo');
   await mkdir(path.join(storage, 'private-guest', 'sync'), { recursive: true });
   await writeFile(path.join(storage, 'private-guest', 'sync', 'secret.jar'), 'private mod');
-  await symlink(path.join(storage, 'private-guest', 'sync'), path.join(storage, 'public-guest', 'sync', 'borrowed'), process.platform === 'win32' ? 'junction' : 'dir');
+  await symlink(
+    path.join(storage, 'private-guest', 'sync'),
+    path.join(storage, 'public-guest', 'sync', 'borrowed'),
+    process.platform === 'win32' ? 'junction' : 'dir',
+  );
   const listing = await list.GET(request());
   assert.equal(listing.status, 200);
   assert.equal(listing.headers.get('cache-control'), 'private, no-store');
-  assert.deepEqual((await listing.json()).map(session => session.name), ['Public']);
+  assert.deepEqual(
+    (await listing.json()).map((session) => session.name),
+    ['Public'],
+  );
   for (const route of routes) {
-    const params = slug => ({ params: Promise.resolve({ slug, path: ['mods', 'test.jar'], file: ['logo.png'] }) });
+    const params = (slug) => ({
+      params: Promise.resolve({ slug, path: ['mods', 'test.jar'], file: ['logo.png'] }),
+    });
     const response = await route.GET(request(), params('public-guest'));
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('cache-control'), 'private, no-store');
     const bytes = await response.arrayBuffer();
-    if (route === routes[1]) assert.ok(!JSON.parse(Buffer.from(bytes).toString()).some(entry => entry.name.includes('borrowed') || entry.name.includes('secret.jar')));
-    for (const slug of ['private-guest', 'missing']) assert.equal((await route.GET(request(), params(slug))).status, 404);
-    assert.equal((await route.GET(request('/', { Authorization: 'Bearer invalid' }), params('public-guest'))).status, 401);
+    if (route === routes[1])
+      assert.ok(
+        !JSON.parse(Buffer.from(bytes).toString()).some(
+          (entry) => entry.name.includes('borrowed') || entry.name.includes('secret.jar'),
+        ),
+      );
+    for (const slug of ['private-guest', 'missing'])
+      assert.equal((await route.GET(request(), params(slug))).status, 404);
+    assert.equal(
+      (await route.GET(request('/', { Authorization: 'Bearer invalid' }), params('public-guest')))
+        .status,
+      401,
+    );
     sessions[0].publicAccess = false;
     assert.equal((await route.GET(request(), params('public-guest'))).status, 404);
     sessions[0].publicAccess = true;
   }
-  assert.equal((await routes[2].GET(request(), { params: Promise.resolve({ slug: 'public-guest', path: ['borrowed', 'secret.jar'] }) })).status, 403);
-  await writeFile(path.join(storage, 'public-guest', 'assets', 'logo.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><script>alert("untrusted")</script></svg>');
-  const svg = await routes[3].GET(request(), { params: Promise.resolve({ slug: 'public-guest', file: ['logo.svg'] }) });
+  assert.equal(
+    (
+      await routes[2].GET(request(), {
+        params: Promise.resolve({ slug: 'public-guest', path: ['borrowed', 'secret.jar'] }),
+      })
+    ).status,
+    403,
+  );
+  await writeFile(
+    path.join(storage, 'public-guest', 'assets', 'logo.svg'),
+    '<svg xmlns="http://www.w3.org/2000/svg"><script>alert("untrusted")</script></svg>',
+  );
+  const svg = await routes[3].GET(request(), {
+    params: Promise.resolve({ slug: 'public-guest', file: ['logo.svg'] }),
+  });
   assert.equal(svg.status, 200);
   assert.equal(svg.headers.get('content-type'), 'image/svg+xml');
   assert.equal(svg.headers.get('x-content-type-options'), 'nosniff');
@@ -345,27 +593,44 @@ test('guests can download only public session metadata and files, including afte
   resetToken();
   tokens.get(hashCredential(credential)).expiresAt = new Date(0);
   assert.equal((await list.GET(request('/sessions', authorized()))).status, 401);
-  assert.equal((await list.GET(request('/sessions', { Authorization: 'Bearer invalid' }))).status, 401);
+  assert.equal(
+    (await list.GET(request('/sessions', { Authorization: 'Bearer invalid' }))).status,
+    401,
+  );
 });
 
 test('launcher login reuses the site callback, creates players, and claims pending invitations', async () => {
   process.env.DISCORD_CLIENT_ID = 'test-client';
   process.env.DISCORD_CLIENT_SECRET = 'test-secret';
-  const params = new URLSearchParams({ launcher_redirect: 'http://127.0.0.1:54321/callback', code_challenge: 'c'.repeat(43), launcher_state: 's'.repeat(43) });
+  const params = new URLSearchParams({
+    launcher_redirect: 'http://127.0.0.1:54321/callback',
+    code_challenge: 'c'.repeat(43),
+    launcher_state: 's'.repeat(43),
+  });
   const start = await login.GET(request(`/api/auth/discord/login?${params}`));
   assert.equal(new URL(start.headers.get('location')).searchParams.get('scope'), 'identify');
-  const context = { redirect: params.get('launcher_redirect'), challenge: params.get('code_challenge'), state: params.get('launcher_state'), oauthState: 'signed-state' };
+  const context = {
+    redirect: params.get('launcher_redirect'),
+    challenge: params.get('code_challenge'),
+    state: params.get('launcher_state'),
+    oauthState: 'signed-state',
+  };
   sessions.push({ access: [{ identifier: 'future.user', discordId: null }] });
   const previousFetch = globalThis.fetch;
   const fetched = [];
   let profile = { id: '345678901234567890', username: 'future.user', avatar: null };
-  globalThis.fetch = async url => {
+  globalThis.fetch = async (url) => {
     fetched.push(url);
     return Response.json(url.endsWith('/token') ? { access_token: 'discord-token' } : profile);
   };
   try {
-    cookies = new Map([['oauth_state', 'signed-state'], ['oauth_launcher', JSON.stringify(context)]]);
-    const completed = await callback.GET(request('/api/auth/discord/callback?state=signed-state&code=discord-code'));
+    cookies = new Map([
+      ['oauth_state', 'signed-state'],
+      ['oauth_launcher', JSON.stringify(context)],
+    ]);
+    const completed = await callback.GET(
+      request('/api/auth/discord/callback?state=signed-state&code=discord-code'),
+    );
     const target = new URL(completed.headers.get('location'));
     assert.equal(target.origin, 'http://127.0.0.1:54321');
     assert.equal(target.searchParams.get('state'), context.state);
@@ -374,19 +639,36 @@ test('launcher login reuses the site callback, creates players, and claims pendi
     assert.equal(players.at(-1).role, 'PLAYER');
     assert.equal(sessions.at(-1).access[0].discordId, players.at(-1).discordId);
     assert.equal(fetched.length, 2); // No guild membership/SFTP requirement for players.
-    cookies = new Map([['oauth_state', 'different-state'], ['oauth_launcher', JSON.stringify(context)]]);
-    const rejected = await callback.GET(request('/api/auth/discord/callback?state=signed-state&code=discord-code'));
+    cookies = new Map([
+      ['oauth_state', 'different-state'],
+      ['oauth_launcher', JSON.stringify(context)],
+    ]);
+    const rejected = await callback.GET(
+      request('/api/auth/discord/callback?state=signed-state&code=discord-code'),
+    );
     assert.ok(rejected.headers.get('location').includes('invalid_csrf_state'));
     assert.equal(fetched.length, 2);
     const claimedId = sessions.at(-1).access[0].discordId;
     profile = { ...profile, username: 'renamed.user' };
-    cookies = new Map([['oauth_state', 'signed-state'], ['oauth_launcher', JSON.stringify(context)]]);
+    cookies = new Map([
+      ['oauth_state', 'signed-state'],
+      ['oauth_launcher', JSON.stringify(context)],
+    ]);
     await callback.GET(request('/api/auth/discord/callback?state=signed-state&code=discord-code'));
     profile = { ...profile, id: '456789012345678901', username: 'future.user' };
-    cookies = new Map([['oauth_state', 'signed-state'], ['oauth_launcher', JSON.stringify(context)]]);
+    cookies = new Map([
+      ['oauth_state', 'signed-state'],
+      ['oauth_launcher', JSON.stringify(context)],
+    ]);
     await callback.GET(request('/api/auth/discord/callback?state=signed-state&code=discord-code'));
-    assert.equal(sessions.at(-1).access[0].discordId, claimedId, 'reusing an old username must not transfer an already claimed invitation');
-  } finally { globalThis.fetch = previousFetch; }
+    assert.equal(
+      sessions.at(-1).access[0].discordId,
+      claimedId,
+      'reusing an old username must not transfer an already claimed invitation',
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
 });
 
 test('creator login retains the guild requirement independently of player login', async () => {
@@ -394,13 +676,24 @@ test('creator login retains the guild requirement independently of player login'
   assert.equal(new URL(start.headers.get('location')).searchParams.get('scope'), 'identify guilds');
   const previousFetch = globalThis.fetch;
   const userCount = players.length;
-  globalThis.fetch = async url => Response.json(url.endsWith('/token') ? { access_token: 'discord-token' } : url.endsWith('/guilds') ? [] : { id: '567890123456789012', username: 'not.in.guild', avatar: null });
+  globalThis.fetch = async (url) =>
+    Response.json(
+      url.endsWith('/token')
+        ? { access_token: 'discord-token' }
+        : url.endsWith('/guilds')
+          ? []
+          : { id: '567890123456789012', username: 'not.in.guild', avatar: null },
+    );
   try {
     cookies = new Map([['oauth_state', 'signed-state']]);
-    const denied = await callback.GET(request('/api/auth/discord/callback?state=signed-state&code=discord-code'));
+    const denied = await callback.GET(
+      request('/api/auth/discord/callback?state=signed-state&code=discord-code'),
+    );
     assert.ok(denied.headers.get('location').includes('/dashboard?error=not_in_guild'));
     assert.equal(players.length, userCount);
-  } finally { globalThis.fetch = previousFetch; }
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
 });
 
 test('readiness reports unavailable configuration or database before opening the browser', async () => {
@@ -409,7 +702,9 @@ test('readiness reports unavailable configuration or database before opening the
   try {
     assert.equal((await ready.GET()).status, 503);
     assert.equal(readinessQueries, 0);
-  } finally { process.env.DISCORD_CLIENT_SECRET = secret; }
+  } finally {
+    process.env.DISCORD_CLIENT_SECRET = secret;
+  }
   readinessError = Error('private database diagnostics');
   const unavailable = await ready.GET();
   assert.equal(unavailable.status, 503);
@@ -423,7 +718,12 @@ test('readiness reports unavailable configuration or database before opening the
 
 test('all recognized OAuth failures return to the bound launcher without exposing provider details', async (t) => {
   t.mock.method(console, 'error', () => {});
-  const context = { redirect: 'http://127.0.0.1:54321/callback', challenge: 'c'.repeat(43), state: 's'.repeat(43), oauthState: 'signed-state' };
+  const context = {
+    redirect: 'http://127.0.0.1:54321/callback',
+    challenge: 'c'.repeat(43),
+    state: 's'.repeat(43),
+    oauthState: 'signed-state',
+  };
   const previousFetch = globalThis.fetch;
   const previousUpsert = db.user.upsert;
   const previousSecret = process.env.DISCORD_CLIENT_SECRET;
@@ -431,7 +731,11 @@ test('all recognized OAuth failures return to the bound launcher without exposin
     { query: 'state=signed-state&error=access_denied', error: 'access_denied', stage: 'none' },
     { query: 'state=signed-state', error: 'missing_code', stage: 'none' },
     { query: 'state=invalid-state&code=discord-code', error: 'invalid_csrf_state', stage: 'none' },
-    { query: 'state=signed-state&code=discord-code', error: 'server_configuration', stage: 'configuration' },
+    {
+      query: 'state=signed-state&code=discord-code',
+      error: 'server_configuration',
+      stage: 'configuration',
+    },
     { query: 'state=signed-state&code=discord-code', error: 'auth_failed', stage: 'token' },
     { query: 'state=signed-state&code=discord-code', error: 'profile_failed', stage: 'profile' },
     { query: 'state=signed-state&code=discord-code', error: 'server_error', stage: 'network' },
@@ -439,15 +743,33 @@ test('all recognized OAuth failures return to the bound launcher without exposin
   ];
   try {
     for (const scenario of cases) {
-      cookies = new Map([['oauth_state', 'signed-state'], ['oauth_launcher', JSON.stringify(context)]]);
+      cookies = new Map([
+        ['oauth_state', 'signed-state'],
+        ['oauth_launcher', JSON.stringify(context)],
+      ]);
       if (scenario.stage === 'configuration') delete process.env.DISCORD_CLIENT_SECRET;
       else process.env.DISCORD_CLIENT_SECRET = previousSecret;
-      db.user.upsert = scenario.stage === 'database' ? async () => { throw Error('Private database details'); } : previousUpsert;
-      globalThis.fetch = async url => {
-        if (['none', 'configuration'].includes(scenario.stage)) assert.fail('Rejected requests must not call Discord');
+      db.user.upsert =
+        scenario.stage === 'database'
+          ? async () => {
+              throw Error('Private database details');
+            }
+          : previousUpsert;
+      globalThis.fetch = async (url) => {
+        if (['none', 'configuration'].includes(scenario.stage))
+          assert.fail('Rejected requests must not call Discord');
         if (scenario.stage === 'network') throw Error('Private network details');
-        if (url.endsWith('/token')) return scenario.stage === 'token' ? new Response('', { status: 400 }) : Response.json({ access_token: 'test' });
-        return scenario.stage === 'profile' ? new Response('', { status: 403 }) : Response.json({ id: players[0].discordId, username: players[0].username, avatar: null });
+        if (url.endsWith('/token'))
+          return scenario.stage === 'token'
+            ? new Response('', { status: 400 })
+            : Response.json({ access_token: 'test' });
+        return scenario.stage === 'profile'
+          ? new Response('', { status: 403 })
+          : Response.json({
+              id: players[0].discordId,
+              username: players[0].username,
+              avatar: null,
+            });
       };
       const response = await callback.GET(request('/api/auth/discord/callback?' + scenario.query));
       const target = new URL(response.headers.get('location'));
@@ -467,9 +789,32 @@ test('all recognized OAuth failures return to the bound launcher without exposin
 
 test('assets.json detects background images (.png, .jpg, etc.), prioritizing custom background over auto-provisioned default-bg', async () => {
   const assetsJson = routes[0];
-  const base = { minecraft: '1.21', syncDir: 'mods', welcome: '', jvmArg: '', credits: '', links: [], members: [], access: [] };
-  const customSession = { ...base, id: 'custom-bg-test', slug: 'custom-bg-test', name: 'Custom BG Session', publicAccess: true, showInLauncher: true };
-  const emptySession = { ...base, id: 'empty-test', slug: 'empty-test', name: 'Empty Session', publicAccess: true, showInLauncher: true };
+  const base = {
+    minecraft: '1.21',
+    syncDir: 'mods',
+    welcome: '',
+    jvmArg: '',
+    credits: '',
+    links: [],
+    members: [],
+    access: [],
+  };
+  const customSession = {
+    ...base,
+    id: 'custom-bg-test',
+    slug: 'custom-bg-test',
+    name: 'Custom BG Session',
+    publicAccess: true,
+    showInLauncher: true,
+  };
+  const emptySession = {
+    ...base,
+    id: 'empty-test',
+    slug: 'empty-test',
+    name: 'Empty Session',
+    publicAccess: true,
+    showInLauncher: true,
+  };
   sessions.push(customSession, emptySession);
 
   const customAssetsDir = path.join(storage, 'custom-bg-test', 'assets');
@@ -477,20 +822,30 @@ test('assets.json detects background images (.png, .jpg, etc.), prioritizing cus
   await writeFile(path.join(customAssetsDir, 'background.png'), 'custom background png data');
 
   // 1. Session with background.png returns background.png
-  const res1 = await assetsJson.GET(request(), { params: Promise.resolve({ slug: 'custom-bg-test' }) });
+  const res1 = await assetsJson.GET(request(), {
+    params: Promise.resolve({ slug: 'custom-bg-test' }),
+  });
   assert.equal(res1.status, 200);
   const data1 = await res1.json();
-  assert.ok(data1.background.endsWith('/api/sessions/custom-bg-test/assets/background.png'), `Expected background.png, got ${data1.background}`);
+  assert.ok(
+    data1.background.endsWith('/api/sessions/custom-bg-test/assets/background.png'),
+    `Expected background.png, got ${data1.background}`,
+  );
 
   // 2. Session with background.png AND auto-provisioned background.jpg (identical size to public/default-bg.jpg)
   const defaultBgSource = path.join(process.cwd(), 'public', 'default-bg.jpg');
   const defaultBgContent = await readFile(defaultBgSource);
   await writeFile(path.join(customAssetsDir, 'background.jpg'), defaultBgContent);
 
-  const res2 = await assetsJson.GET(request(), { params: Promise.resolve({ slug: 'custom-bg-test' }) });
+  const res2 = await assetsJson.GET(request(), {
+    params: Promise.resolve({ slug: 'custom-bg-test' }),
+  });
   assert.equal(res2.status, 200);
   const data2 = await res2.json();
-  assert.ok(data2.background.endsWith('/api/sessions/custom-bg-test/assets/background.png'), `Expected background.png to be preferred over default background.jpg, got ${data2.background}`);
+  assert.ok(
+    data2.background.endsWith('/api/sessions/custom-bg-test/assets/background.png'),
+    `Expected background.png to be preferred over default background.jpg, got ${data2.background}`,
+  );
 
   // 3. Session with no background files falls back to default-bg.jpg
   const emptyAssetsDir = path.join(storage, 'empty-test', 'assets');
@@ -498,7 +853,10 @@ test('assets.json detects background images (.png, .jpg, etc.), prioritizing cus
   const res3 = await assetsJson.GET(request(), { params: Promise.resolve({ slug: 'empty-test' }) });
   assert.equal(res3.status, 200);
   const data3 = await res3.json();
-  assert.ok(data3.background.endsWith('/default-bg.jpg'), `Expected fallback default-bg.jpg, got ${data3.background}`);
+  assert.ok(
+    data3.background.endsWith('/default-bg.jpg'),
+    `Expected fallback default-bg.jpg, got ${data3.background}`,
+  );
 });
 
 test('provisioning and metadata preserve a custom JPEG with the same size as the default', async () => {
@@ -511,7 +869,15 @@ test('provisioning and metadata preserve a custom JPEG with the same size as the
     if (previousRoot === undefined) delete process.env.STORAGE_BASE_DIR;
     else process.env.STORAGE_BASE_DIR = previousRoot;
   }
-  const session = { id: 'same-size-bg', slug: 'same-size-bg', name: 'Same size', publicAccess: true, access: [], members: [], links: [] };
+  const session = {
+    id: 'same-size-bg',
+    slug: 'same-size-bg',
+    name: 'Same size',
+    publicAccess: true,
+    access: [],
+    members: [],
+    links: [],
+  };
   sessions.push(session);
   const assets = path.join(storage, session.id, 'assets');
   await mkdir(assets, { recursive: true });
@@ -522,7 +888,9 @@ test('provisioning and metadata preserve a custom JPEG with the same size as the
   await writeFile(path.join(assets, 'background.png'), 'another background');
   await sftp.ensureSessionDirectories(session.id);
   assert.deepEqual(await readFile(path.join(assets, 'background.jpg')), custom);
-  const response = await routes[0].GET(request(), { params: Promise.resolve({ slug: session.slug }) });
+  const response = await routes[0].GET(request(), {
+    params: Promise.resolve({ slug: session.slug }),
+  });
   const metadata = await response.json();
   assert.ok(Array.isArray(metadata.background));
   assert.equal(metadata.background.length, 2);

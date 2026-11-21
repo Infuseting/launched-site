@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { ValidationError } from '@/lib/validations/validator';
-import type { Prisma, Session, SessionMember, User } from '@prisma/client';
+import type { Session, SessionMember } from '@prisma/client';
 
 export type AuthenticatedUser = NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>;
 
@@ -11,13 +11,25 @@ export function handleApiError(error: unknown): NextResponse {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  if (error && typeof error === 'object' && 'message' in error) {
-    const msg = (error as { message: string }).message;
-    return NextResponse.json({ error: msg }, { status: 400 });
+  if (error instanceof SyntaxError) {
+    return NextResponse.json(
+      { error: 'Le corps JSON de la requête est invalide' },
+      { status: 400 },
+    );
   }
 
   console.error('[API Error]', error);
   return NextResponse.json({ error: 'Une erreur interne est survenue' }, { status: 500 });
+}
+
+/** Only deliberate input errors may be returned to clients; database failures stay private. */
+export function validateInput<T>(parse: () => T): T {
+  try {
+    return parse();
+  } catch (error) {
+    if (error instanceof Error) throw new ValidationError(error.message);
+    throw error;
+  }
 }
 
 /**
@@ -25,7 +37,7 @@ export function handleApiError(error: unknown): NextResponse {
  */
 export async function withAuth(
   request: Request,
-  handler: (user: AuthenticatedUser) => Promise<NextResponse>
+  handler: (user: AuthenticatedUser) => Promise<NextResponse>,
 ): Promise<NextResponse> {
   try {
     const user = await getCurrentUser(request);
@@ -48,7 +60,7 @@ export async function withSessionMember(
     user: AuthenticatedUser;
     member: SessionMember;
     session: Session;
-  }) => Promise<NextResponse>
+  }) => Promise<NextResponse>,
 ): Promise<NextResponse> {
   return withAuth(request, async (user) => {
     const member = await prisma.sessionMember.findUnique({
@@ -83,7 +95,7 @@ export async function withSessionOwner(
     user: AuthenticatedUser;
     member: SessionMember;
     session: Session;
-  }) => Promise<NextResponse>
+  }) => Promise<NextResponse>,
 ): Promise<NextResponse> {
   return withAuth(request, async (user) => {
     const member = await prisma.sessionMember.findUnique({
@@ -99,7 +111,7 @@ export async function withSessionOwner(
     if (!member || member.role !== 'OWNER') {
       return NextResponse.json(
         { error: 'Seul le propriétaire de la session est autorisé' },
-        { status: 403 }
+        { status: 403 },
       );
     }
 

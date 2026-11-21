@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 const headers = { 'Cache-Control': 'private, no-store', Vary: 'Authorization, Cookie' };
 
 export async function GET(request: Request) {
-  if (!await getCurrentUser(request)) {
+  if (!(await getCurrentUser(request))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers });
   }
 
@@ -24,8 +24,14 @@ export async function GET(request: Request) {
       orderBy: [{ username: 'asc' }, { discordId: 'asc' }],
       take: 21,
     });
-    return NextResponse.json({ users: users.slice(0, 20), hasMore: users.length > 20 }, { headers });
+    return NextResponse.json(
+      { users: users.slice(0, 20), hasMore: users.length > 20 },
+      { headers },
+    );
   } catch {
-    return NextResponse.json({ error: 'La recherche est indisponible. Réessayez dans un instant.' }, { status: 503, headers });
+    return NextResponse.json(
+      { error: 'La recherche est indisponible. Réessayez dans un instant.' },
+      { status: 503, headers },
+    );
   }
 }

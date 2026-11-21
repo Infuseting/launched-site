@@ -1,14 +1,17 @@
-import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { syncSftpUser } from "@/lib/sftpgo";
+import { NextResponse } from 'next/server';
+import { getCurrentUser } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
+import { syncSftpUser } from '@/lib/sftpgo';
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   const user = await getCurrentUser(request);
-  if (!user || user.role !== "ADMIN") {
-    return NextResponse.json({ error: "Forbidden: Admin required" }, { status: 403 });
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  if (user.role !== 'ADMIN') {
+    return NextResponse.json({ error: 'Forbidden: Admin required' }, { status: 403 });
   }
 
   const users = await prisma.user.findMany({
@@ -21,11 +24,11 @@ export async function GET(request: Request) {
         },
       },
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: { createdAt: 'desc' },
   });
 
   const formattedUsers = users.map((u) => {
-    const ownedCount = u.sessionMembers.filter((m) => m.role === "OWNER").length;
+    const ownedCount = u.sessionMembers.filter((m) => m.role === 'OWNER').length;
     return {
       id: u.id,
       discordId: u.discordId,
@@ -45,21 +48,24 @@ export async function GET(request: Request) {
 
 export async function PUT(request: Request) {
   const admin = await getCurrentUser(request);
-  if (!admin || admin.role !== "ADMIN") {
-    return NextResponse.json({ error: "Forbidden: Admin required" }, { status: 403 });
+  if (!admin) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  if (admin.role !== 'ADMIN') {
+    return NextResponse.json({ error: 'Forbidden: Admin required' }, { status: 403 });
   }
 
   const body = await request.json();
   const { userId, sessionLimit, diskQuotaBytes, role } = body;
 
   if (!userId) {
-    return NextResponse.json({ error: "userId required" }, { status: 400 });
+    return NextResponse.json({ error: 'userId required' }, { status: 400 });
   }
 
-  if (userId === admin.id && role && role !== "ADMIN") {
+  if (userId === admin.id && role && role !== 'ADMIN') {
     return NextResponse.json(
-      { error: "Vous ne pouvez pas révoquer vos propres droits administrateur" },
-      { status: 400 }
+      { error: 'Vous ne pouvez pas révoquer vos propres droits administrateur' },
+      { status: 400 },
     );
   }
 
@@ -74,7 +80,7 @@ export async function PUT(request: Request) {
     });
 
     if (!target) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
     const updated = await prisma.user.update({
@@ -82,7 +88,7 @@ export async function PUT(request: Request) {
       data: {
         ...(sessionLimit !== undefined ? { sessionLimit: Number(sessionLimit) } : {}),
         ...(diskQuotaBytes !== undefined ? { diskQuotaBytes: BigInt(diskQuotaBytes) } : {}),
-        ...(role && (role === "ADMIN" || role === "CREATOR") ? { role } : {}),
+        ...(role && (role === 'ADMIN' || role === 'CREATOR') ? { role } : {}),
       },
       include: {
         sessionMembers: {
@@ -115,7 +121,7 @@ export async function PUT(request: Request) {
       },
     });
   } catch (err) {
-    console.error("[Admin Update User] Error:", err);
-    return NextResponse.json({ error: "Failed to update user" }, { status: 500 });
+    console.error('[Admin Update User] Error:', err);
+    return NextResponse.json({ error: 'Failed to update user' }, { status: 500 });
   }
 }

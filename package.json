@@ -1,13 +1,20 @@
 {
   "name": "web",
-  "version": "26.0.1",
+  "version": "26.0.2",
   "private": true,
   "scripts": {
     "sessions:migrate": "node scripts/migrate-sessions.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "next typegen && tsc --noEmit",
+    "test": "node --test tests/*.test.mjs src/lib/*.test.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -17,7 +24,7 @@
     "framer-motion": "^12.38.0",
     "jose": "^6.2.12",
     "lucide-react": "^1.8.0",
-    "next": "16.2.4",
+    "next": "16.4.6",
     "radix-ui": "^1.8.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -30,9 +37,13 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.4",
+    "eslint-config-next": "16.4.6",
+    "prettier": "3.10.1",
     "prisma": "^6.4.1",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=20.9.0"
   }
 }

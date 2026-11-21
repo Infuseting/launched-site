@@ -14,7 +14,8 @@ export type DiscordPresence = {
   };
 };
 
-type AssetField = 'large_image' | 'large_text' | 'large_url' | 'small_image' | 'small_text' | 'small_url';
+type AssetField =
+  'large_image' | 'large_text' | 'large_url' | 'small_image' | 'small_text' | 'small_url';
 export type SessionPresence = { mode: 'custom'; config: DiscordPresence };
 
 function record(value: unknown): Record<string, unknown> {
@@ -34,7 +35,9 @@ function optionalText(value: unknown, field: string, max = 128, min = 2) {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
   if (trimmed.length < min || trimmed.length > max || /[\u0000-\u001f\u007f]/.test(trimmed)) {
-    throw new Error(`${field} doit contenir entre ${min} et ${max} caractères sur une seule ligne.`);
+    throw new Error(
+      `${field} doit contenir entre ${min} et ${max} caractères sur une seule ligne.`,
+    );
   }
   return trimmed;
 }
@@ -63,7 +66,11 @@ export function parsePresenceUpdate(value: unknown): SessionPresence | null | un
   if (settings.mode !== 'custom') throw new Error('Mode Rich Presence invalide.');
 
   const config = record(settings.config);
-  const applicationId = optionalText(config.applicationId, 'L’identifiant d’application Discord', 20);
+  const applicationId = optionalText(
+    config.applicationId,
+    'L’identifiant d’application Discord',
+    20,
+  );
   if (!applicationId || !validApplicationId(applicationId)) {
     throw new Error('Saisissez un identifiant d’application Discord valide.');
   }
@@ -71,16 +78,24 @@ export function parsePresenceUpdate(value: unknown): SessionPresence | null | un
 
   const activity = record(config.activity);
   const { type, status_display_type: statusDisplay } = activity;
-  if (type !== 0 && type !== 2 && type !== 3 && type !== 5) throw new Error('Type d’activité Discord invalide.');
-  if (statusDisplay !== undefined && statusDisplay !== 0 && statusDisplay !== 1 && statusDisplay !== 2) {
+  if (type !== 0 && type !== 2 && type !== 3 && type !== 5)
+    throw new Error('Type d’activité Discord invalide.');
+  if (
+    statusDisplay !== undefined &&
+    statusDisplay !== 0 &&
+    statusDisplay !== 1 &&
+    statusDisplay !== 2
+  ) {
     throw new Error('Texte de statut Discord invalide.');
   }
   const details = optionalText(activity.details, 'Les détails');
   const state = optionalText(activity.state, 'Le sous-texte');
   const detailsUrl = optionalUrl(activity.details_url, 'Le lien des détails');
   const stateUrl = optionalUrl(activity.state_url, 'Le lien du sous-texte');
-  if ((detailsUrl || statusDisplay === 2) && !details) throw new Error('Renseignez les détails pour les utiliser comme statut ou lien.');
-  if ((stateUrl || statusDisplay === 1) && !state) throw new Error('Renseignez le sous-texte pour l’utiliser comme statut ou lien.');
+  if ((detailsUrl || statusDisplay === 2) && !details)
+    throw new Error('Renseignez les détails pour les utiliser comme statut ou lien.');
+  if ((stateUrl || statusDisplay === 1) && !state)
+    throw new Error('Renseignez le sous-texte pour l’utiliser comme statut ou lien.');
 
   const assets = activity.assets === undefined ? {} : record(activity.assets);
   const largeImage = optionalImage(assets.large_image, 'La grande image');
@@ -89,17 +104,21 @@ export function parsePresenceUpdate(value: unknown): SessionPresence | null | un
   const smallText = optionalText(assets.small_text, 'L’infobulle de la petite image');
   const largeUrl = optionalUrl(assets.large_url, 'Le lien de la grande image');
   const smallUrl = optionalUrl(assets.small_url, 'Le lien de la petite image');
-  if (!largeImage && (largeText || largeUrl)) throw new Error('Renseignez la grande image pour lui ajouter un lien ou une infobulle.');
-  if (!smallImage && (smallText || smallUrl)) throw new Error('Renseignez la petite image pour lui ajouter un lien ou une infobulle.');
+  if (!largeImage && (largeText || largeUrl))
+    throw new Error('Renseignez la grande image pour lui ajouter un lien ou une infobulle.');
+  if (!smallImage && (smallText || smallUrl))
+    throw new Error('Renseignez la petite image pour lui ajouter un lien ou une infobulle.');
 
   const rawButtons = activity.buttons ?? [];
-  if (!Array.isArray(rawButtons) || rawButtons.length > 2) throw new Error('Discord accepte jusqu’à deux boutons.');
+  if (!Array.isArray(rawButtons) || rawButtons.length > 2)
+    throw new Error('Discord accepte jusqu’à deux boutons.');
   const buttons = rawButtons.flatMap((value, index) => {
     const button = record(value);
     const label = optionalText(button.label, `Le libellé du bouton ${index + 1}`, 32, 1);
     const url = optionalUrl(button.url, `L’adresse du bouton ${index + 1}`);
     if (!label && !url) return [];
-    if (!label || !url) throw new Error(`Renseignez le libellé et l’adresse du bouton ${index + 1}.`);
+    if (!label || !url)
+      throw new Error(`Renseignez le libellé et l’adresse du bouton ${index + 1}.`);
     return [{ label, url }];
   });
 
@@ -116,10 +135,17 @@ export function parsePresenceUpdate(value: unknown): SessionPresence | null | un
         details_url: detailsUrl,
         state,
         state_url: stateUrl,
-        assets: largeImage || smallImage ? {
-          large_image: largeImage, large_text: largeText, large_url: largeUrl,
-          small_image: smallImage, small_text: smallText, small_url: smallUrl,
-        } : undefined,
+        assets:
+          largeImage || smallImage
+            ? {
+                large_image: largeImage,
+                large_text: largeText,
+                large_url: largeUrl,
+                small_image: smallImage,
+                small_text: smallText,
+                small_url: smallUrl,
+              }
+            : undefined,
         buttons: buttons.length ? buttons : undefined,
       },
     },

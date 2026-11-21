@@ -1,1 +1,1 @@
-export { GET } from "@/app/sessions/route";
+export { GET } from '@/app/sessions/route';

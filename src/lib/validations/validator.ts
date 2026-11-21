@@ -1,10 +1,21 @@
-export type ValidationResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: string };
+export type ValidationResult<T> = { success: true; data: T } | { success: false; error: string };
 
 export interface Schema<T> {
   safeParse(input: unknown): ValidationResult<T>;
   parse(input: unknown): T;
+}
+
+/** Omitted fields must stay omitted so partial updates never erase stored values. */
+function optional<T>(schema: Schema<T>): Schema<T | undefined> {
+  return {
+    safeParse: (input) =>
+      input == null ? { success: true, data: undefined } : schema.safeParse(input),
+    parse(input) {
+      const result = this.safeParse(input);
+      if (!result.success) throw new ValidationError(result.error);
+      return result.data;
+    },
+  };
 }
 
 export class ValidationError extends Error {
@@ -18,7 +29,6 @@ export class StringSchemaBuilder implements Schema<string> {
   private minLength?: { len: number; msg?: string };
   private maxLength?: { len: number; msg?: string };
   private isTrim = false;
-  private isOptional = false;
   private defaultValue?: string;
 
   min(len: number, msg?: string): this {
@@ -36,9 +46,8 @@ export class StringSchemaBuilder implements Schema<string> {
     return this;
   }
 
-  optional(): StringSchemaBuilder {
-    this.isOptional = true;
-    return this;
+  optional(): Schema<string | undefined> {
+    return optional(this);
   }
 
   default(val: string): this {
@@ -49,7 +58,6 @@ export class StringSchemaBuilder implements Schema<string> {
   safeParse(input: unknown): ValidationResult<string> {
     if (input === undefined || input === null) {
       if (this.defaultValue !== undefined) return { success: true, data: this.defaultValue };
-      if (this.isOptional) return { success: true, data: '' };
       return { success: false, error: 'Ce champ est requis' };
     }
 
@@ -81,12 +89,10 @@ export class StringSchemaBuilder implements Schema<string> {
 }
 
 export class BooleanSchemaBuilder implements Schema<boolean> {
-  private isOptional = false;
   private defaultValue?: boolean;
 
-  optional(): this {
-    this.isOptional = true;
-    return this;
+  optional(): Schema<boolean | undefined> {
+    return optional(this);
   }
 
   default(val: boolean): this {
@@ -97,10 +103,10 @@ export class BooleanSchemaBuilder implements Schema<boolean> {
   safeParse(input: unknown): ValidationResult<boolean> {
     if (input === undefined || input === null) {
       if (this.defaultValue !== undefined) return { success: true, data: this.defaultValue };
-      if (this.isOptional) return { success: true, data: false };
       return { success: false, error: 'Un booléen est requis' };
     }
-    return { success: true, data: Boolean(input) };
+    if (typeof input !== 'boolean') return { success: false, error: 'Un booléen est requis' };
+    return { success: true, data: input };
   }
 
   parse(input: unknown): boolean {
@@ -111,12 +117,10 @@ export class BooleanSchemaBuilder implements Schema<boolean> {
 }
 
 export class NumberSchemaBuilder implements Schema<number> {
-  private isOptional = false;
   private defaultValue?: number;
 
-  optional(): this {
-    this.isOptional = true;
-    return this;
+  optional(): Schema<number | undefined> {
+    return optional(this);
   }
 
   default(val: number): this {
@@ -127,12 +131,11 @@ export class NumberSchemaBuilder implements Schema<number> {
   safeParse(input: unknown): ValidationResult<number> {
     if (input === undefined || input === null) {
       if (this.defaultValue !== undefined) return { success: true, data: this.defaultValue };
-      if (this.isOptional) return { success: true, data: 0 };
       return { success: false, error: 'Un nombre est requis' };
     }
-    const num = Number(input);
-    if (Number.isNaN(num)) return { success: false, error: 'Nombre invalide' };
-    return { success: true, data: num };
+    if (typeof input !== 'number' || !Number.isFinite(input))
+      return { success: false, error: 'Nombre invalide' };
+    return { success: true, data: input };
   }
 
   parse(input: unknown): number {
@@ -143,15 +146,13 @@ export class NumberSchemaBuilder implements Schema<number> {
 }
 
 export class ArraySchemaBuilder<T> implements Schema<T[]> {
-  private isOptional = false;
   private defaultValue?: T[];
   private maxItems?: number;
 
   constructor(private readonly itemSchema: Schema<T>) {}
 
-  optional(): this {
-    this.isOptional = true;
-    return this;
+  optional(): Schema<T[] | undefined> {
+    return optional(this);
   }
 
   default(val: T[]): this {
@@ -166,15 +167,17 @@ export class ArraySchemaBuilder<T> implements Schema<T[]> {
 
   safeParse(input: unknown): ValidationResult<T[]> {
     if (input === undefined || input === null) {
-      if (this.defaultValue !== undefined) return { success: true, data: this.defaultValue };
-      if (this.isOptional) return { success: true, data: [] };
+      if (this.defaultValue !== undefined) return { success: true, data: [...this.defaultValue] };
       return { success: false, error: 'Une liste est requise' };
     }
     if (!Array.isArray(input)) {
       return { success: false, error: 'Une liste est requise' };
     }
 
-    const items = this.maxItems !== undefined ? input.slice(0, this.maxItems) : input;
+    if (this.maxItems !== undefined && input.length > this.maxItems) {
+      return { success: false, error: `Au maximum ${this.maxItems} éléments autorisés` };
+    }
+    const items = input;
     const result: T[] = [];
     for (let i = 0; i < items.length; i++) {
       const itemRes = this.itemSchema.safeParse(items[i]);
@@ -193,47 +196,43 @@ export class ArraySchemaBuilder<T> implements Schema<T[]> {
   }
 }
 
-export class AnySchemaBuilder implements Schema<any> {
+export class AnySchemaBuilder implements Schema<unknown> {
   optional(): this {
     return this;
   }
 
-  safeParse(input: unknown): ValidationResult<any> {
+  safeParse(input: unknown): ValidationResult<unknown> {
     return { success: true, data: input };
   }
 
-  parse(input: unknown): any {
+  parse(input: unknown): unknown {
     return input;
   }
 }
 
-export type InferShape<T extends Record<string, Schema<any>>> = {
+export type InferShape<T extends Record<string, Schema<unknown>>> = {
   [K in keyof T]: T[K] extends Schema<infer U> ? U : never;
 };
 
-export class ObjectSchemaBuilder<T extends Record<string, Schema<any>>>
-  implements Schema<InferShape<T>>
-{
-  private isOptional = false;
-
+export class ObjectSchemaBuilder<T extends Record<string, Schema<unknown>>> implements Schema<
+  InferShape<T>
+> {
   constructor(private readonly shape: T) {}
 
-  optional(): this {
-    this.isOptional = true;
-    return this;
+  optional(): Schema<InferShape<T> | undefined> {
+    return optional(this);
   }
 
   safeParse(input: unknown): ValidationResult<InferShape<T>> {
     if (input === undefined || input === null) {
-      if (this.isOptional) return { success: true, data: {} as InferShape<T> };
       return { success: false, error: 'Un objet est requis' };
     }
-    if (typeof input !== 'object') {
+    if (typeof input !== 'object' || Array.isArray(input)) {
       return { success: false, error: 'Un objet est requis' };
     }
 
     const raw = input as Record<string, unknown>;
-    const output = {} as InferShape<T>;
+    const output: Record<string, unknown> = {};
 
     for (const key of Object.keys(this.shape)) {
       const fieldSchema = this.shape[key];
@@ -242,10 +241,10 @@ export class ObjectSchemaBuilder<T extends Record<string, Schema<any>>>
         return { success: false, error: `Champ '${key}': ${res.error}` };
       }
       if (res.data !== undefined) {
-        output[key as keyof T] = res.data;
+        output[key] = res.data;
       }
     }
-    return { success: true, data: output };
+    return { success: true, data: output as InferShape<T> };
   }
 
   parse(input: unknown): InferShape<T> {
@@ -260,7 +259,7 @@ export const v = {
   boolean: () => new BooleanSchemaBuilder(),
   number: () => new NumberSchemaBuilder(),
   array: <T>(itemSchema: Schema<T>) => new ArraySchemaBuilder<T>(itemSchema),
-  object: <T extends Record<string, Schema<any>>>(shape: T) =>
+  object: <T extends Record<string, Schema<unknown>>>(shape: T) =>
     new ObjectSchemaBuilder<T>(shape),
   any: () => new AnySchemaBuilder(),
 };

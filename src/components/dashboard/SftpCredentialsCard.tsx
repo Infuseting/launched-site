@@ -63,13 +63,17 @@ export const SftpCredentialsCard: React.FC<SftpCredentialsCardProps> = ({
       </div>
 
       {passwordSuccessToast && (
-        <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 text-xs text-blue-300 flex items-center justify-between">
+        <div
+          role="status"
+          className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 text-xs text-blue-300 flex items-center justify-between"
+        >
           <div className="flex items-center gap-2">
             <Check className="w-4 h-4 text-blue-400 shrink-0" />
             <span>{passwordSuccessToast}</span>
           </div>
           <button
             type="button"
+            aria-label="Fermer la notification"
             onClick={onDismissToast}
             className="text-blue-400 hover:text-white text-xs ml-4 cursor-pointer"
           >
@@ -112,6 +116,7 @@ export const SftpCredentialsCard: React.FC<SftpCredentialsCardProps> = ({
               onClick={() => onCopyText(sftp.password, 'pwd')}
               className="p-1 rounded text-zinc-400 hover:text-white hover:bg-white/5 transition cursor-pointer"
               title="Copier le mot de passe"
+              aria-label="Copier le mot de passe"
             >
               {copiedKey === 'pwd' ? (
                 <Check className="w-3.5 h-3.5 text-blue-400" />
@@ -131,7 +136,10 @@ export const SftpCredentialsCard: React.FC<SftpCredentialsCardProps> = ({
       </div>
 
       <div className="text-[11px] text-zinc-500 font-mono">
-        Format FileZilla : <span className="text-zinc-400">sftp://{sftp.username}@{sftp.host}:{sftp.port}</span>
+        Format FileZilla :{' '}
+        <span className="text-zinc-400">
+          sftp://{sftp.username}@{sftp.host}:{sftp.port}
+        </span>
       </div>
     </section>
   );

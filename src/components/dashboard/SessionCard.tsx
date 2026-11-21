@@ -19,10 +19,10 @@ export const SessionCard: React.FC<SessionCardProps> = ({
   const loader = session.fabric
     ? `Fabric ${session.fabric}`
     : session.forge
-    ? `Forge ${session.forge}`
-    : session.neoforge
-    ? `NeoForge ${session.neoforge}`
-    : 'Vanilla';
+      ? `Forge ${session.forge}`
+      : session.neoforge
+        ? `NeoForge ${session.neoforge}`
+        : 'Vanilla';
 
   return (
     <div className="bg-zinc-950 border border-white/10 rounded-xl p-5 flex flex-col justify-between space-y-4 hover:border-white/20 transition">
@@ -49,6 +49,7 @@ export const SessionCard: React.FC<SessionCardProps> = ({
               type="button"
               onClick={() => onEdit(session)}
               title="Modifier"
+              aria-label={`Modifier : ${session.name}`}
               className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition cursor-pointer"
             >
               <Edit3 className="w-4 h-4" />
@@ -60,6 +61,7 @@ export const SessionCard: React.FC<SessionCardProps> = ({
                   type="button"
                   onClick={() => onOpenCollaborators(session)}
                   title="Collaborateurs"
+                  aria-label={`Collaborateurs : ${session.name}`}
                   className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition relative cursor-pointer"
                 >
                   <Users className="w-4 h-4" />
@@ -73,6 +75,7 @@ export const SessionCard: React.FC<SessionCardProps> = ({
                   type="button"
                   onClick={() => onDelete(session)}
                   title="Supprimer"
+                  aria-label={`Supprimer : ${session.name}`}
                   className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-white/5 transition cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -95,7 +98,9 @@ export const SessionCard: React.FC<SessionCardProps> = ({
         </div>
 
         {session.welcome && (
-          <p className="text-xs text-zinc-400 mt-3 line-clamp-1 italic">"{session.welcome}"</p>
+          <p className="text-xs text-zinc-400 mt-3 line-clamp-1 italic">
+            &quot;{session.welcome}&quot;
+          </p>
         )}
       </div>
 
