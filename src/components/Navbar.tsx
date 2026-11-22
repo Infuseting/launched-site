@@ -44,7 +44,7 @@ export default function Navbar() {
           Téléchargement
         </Link>
         <a
-          href="https://discord.gg/kfzyScBSqS"
+          href="https://discord.gg/MT2urwnNx"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex min-h-11 items-center hover:text-white transition-colors"

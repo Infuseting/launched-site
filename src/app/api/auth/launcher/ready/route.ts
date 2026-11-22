@@ -3,7 +3,11 @@ import { prisma } from '@/lib/prisma';
 import { privateHeaders } from '@/lib/launcher-auth';
 
 export async function GET() {
-  if (!process.env.DISCORD_CLIENT_ID?.trim() || !process.env.DISCORD_CLIENT_SECRET?.trim()) {
+  if (
+    !process.env.DISCORD_CLIENT_ID?.trim() ||
+    !process.env.DISCORD_CLIENT_SECRET?.trim() ||
+    !process.env.DISCORD_BOT_TOKEN?.trim()
+  ) {
     return NextResponse.json(
       { error: 'La connexion Discord est indisponible sur le site. Réessayez plus tard.' },
       { status: 503, headers: privateHeaders },

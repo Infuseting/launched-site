@@ -138,7 +138,7 @@ async function load(relative) {
       'export async function cookies() { return globalThis.__launcherTestCookies; }',
     ),
     '@/lib/auth': virtual(
-      'export const createOAuthState=()=>"signed-state"; export const verifyOAuthState=s=>s==="signed-state"; export const isDiscordAdmin=()=>false; export const createSessionToken=()=>{throw Error("Player must not get creator token")}; export const setSessionCookie=()=>{throw Error("Player must not get creator cookie")};',
+      'export const createOAuthState=()=>"signed-state"; export const verifyOAuthState=s=>s==="signed-state"; export const isDiscordAdmin=()=>false; export const createSessionToken=({role})=>{if(role==="PLAYER")throw Error("Player must not get creator token");return "browser-test-token"}; export const setSessionCookie=(token,response)=>{response.cookies.set("launched_session",token,{httpOnly:true})};',
     ),
     '@/lib/sftpgo': virtual(
       `import path from 'node:path'; export const getSessionPhysicalPath=id=>path.join(${JSON.stringify(storage)},id); export async function ensureSessionDirectories(){}; export const syncSftpUser=()=>{throw Error('Player must not get SFTP')};`,
@@ -602,13 +602,18 @@ test('guests can download only public session metadata and files, including afte
 test('launcher login reuses the site callback, creates players, and claims pending invitations', async () => {
   process.env.DISCORD_CLIENT_ID = 'test-client';
   process.env.DISCORD_CLIENT_SECRET = 'test-secret';
+  process.env.DISCORD_BOT_TOKEN = 'test-bot-token';
+  process.env.DISCORD_GUILD_ID = '1496947207847411965';
   const params = new URLSearchParams({
     launcher_redirect: 'http://127.0.0.1:54321/callback',
     code_challenge: 'c'.repeat(43),
     launcher_state: 's'.repeat(43),
   });
   const start = await login.GET(request(`/api/auth/discord/login?${params}`));
-  assert.equal(new URL(start.headers.get('location')).searchParams.get('scope'), 'identify');
+  assert.equal(
+    new URL(start.headers.get('location')).searchParams.get('scope'),
+    'identify guilds.join',
+  );
   const context = {
     redirect: params.get('launcher_redirect'),
     challenge: params.get('code_challenge'),
@@ -619,8 +624,17 @@ test('launcher login reuses the site callback, creates players, and claims pendi
   const previousFetch = globalThis.fetch;
   const fetched = [];
   let profile = { id: '345678901234567890', username: 'future.user', avatar: null };
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = async (url, options) => {
     fetched.push(url);
+    if (options?.method === 'PUT') {
+      assert.equal(
+        url,
+        `https://discord.com/api/v10/guilds/${process.env.DISCORD_GUILD_ID}/members/${profile.id}`,
+      );
+      assert.equal(options.headers.Authorization, 'Bot test-bot-token');
+      assert.deepEqual(JSON.parse(options.body), { access_token: 'discord-token' });
+      return new Response(null, { status: 201 });
+    }
     return Response.json(url.endsWith('/token') ? { access_token: 'discord-token' } : profile);
   };
   try {
@@ -638,7 +652,7 @@ test('launcher login reuses the site callback, creates players, and claims pendi
     assert.equal(target.searchParams.get('token'), null);
     assert.equal(players.at(-1).role, 'PLAYER');
     assert.equal(sessions.at(-1).access[0].discordId, players.at(-1).discordId);
-    assert.equal(fetched.length, 2); // No guild membership/SFTP requirement for players.
+    assert.equal(fetched.length, 3); // Join the guild before issuing a player code.
     cookies = new Map([
       ['oauth_state', 'different-state'],
       ['oauth_launcher', JSON.stringify(context)],
@@ -647,7 +661,7 @@ test('launcher login reuses the site callback, creates players, and claims pendi
       request('/api/auth/discord/callback?state=signed-state&code=discord-code'),
     );
     assert.ok(rejected.headers.get('location').includes('invalid_csrf_state'));
-    assert.equal(fetched.length, 2);
+    assert.equal(fetched.length, 3);
     const claimedId = sessions.at(-1).access[0].discordId;
     profile = { ...profile, username: 'renamed.user' };
     cookies = new Map([
@@ -671,27 +685,126 @@ test('launcher login reuses the site callback, creates players, and claims pendi
   }
 });
 
-test('creator login retains the guild requirement independently of player login', async () => {
+test('creator login adds the member and accepts an already joined member before issuing a session', async () => {
   const start = await login.GET(request('/api/auth/discord/login'));
-  assert.equal(new URL(start.headers.get('location')).searchParams.get('scope'), 'identify guilds');
+  assert.equal(
+    new URL(start.headers.get('location')).searchParams.get('scope'),
+    'identify guilds.join',
+  );
+  const previousFetch = globalThis.fetch;
+  const previousFind = db.user.findUnique;
+  const previousUpdate = db.user.update;
+  const creator = {
+    ...players[0],
+    role: 'CREATOR',
+    sftpUsername: 'creator',
+    sftpPassword: 'password',
+    sessionMembers: [],
+  };
+  let joined = false;
+  db.user.findUnique = async () => {
+    assert.equal(joined, true, 'guild join must precede account access');
+    return creator;
+  };
+  db.user.update = async () => creator;
+  try {
+    for (const status of [201, 204]) {
+      joined = false;
+      globalThis.fetch = async (url, options) => {
+        if (url.endsWith('/token')) return Response.json({ access_token: 'discord-token' });
+        if (url.endsWith('/users/@me'))
+          return Response.json({ id: creator.discordId, username: creator.username, avatar: null });
+        assert.equal(
+          url,
+          `https://discord.com/api/v10/guilds/${process.env.DISCORD_GUILD_ID}/members/${creator.discordId}`,
+        );
+        assert.equal(options.method, 'PUT');
+        assert.equal(options.headers.Authorization, 'Bot test-bot-token');
+        assert.deepEqual(JSON.parse(options.body), { access_token: 'discord-token' });
+        joined = true;
+        return new Response(null, { status });
+      };
+      cookies = new Map([['oauth_state', 'signed-state']]);
+      const completed = await callback.GET(
+        request('/api/auth/discord/callback?state=signed-state&code=discord-code'),
+      );
+      assert.equal(new URL(completed.headers.get('location')).pathname, '/dashboard');
+      assert.equal(completed.cookies.get('launched_session').value, 'browser-test-token');
+    }
+  } finally {
+    globalThis.fetch = previousFetch;
+    db.user.findUnique = previousFind;
+    db.user.update = previousUpdate;
+  }
+});
+
+test('guild join failures issue no account, session, or launcher code and hide Discord diagnostics', async (t) => {
+  t.mock.method(console, 'error', () => {});
   const previousFetch = globalThis.fetch;
   const userCount = players.length;
-  globalThis.fetch = async (url) =>
-    Response.json(
-      url.endsWith('/token')
-        ? { access_token: 'discord-token' }
-        : url.endsWith('/guilds')
-          ? []
-          : { id: '567890123456789012', username: 'not.in.guild', avatar: null },
-    );
+  const codeCount = codes.size;
+  const context = {
+    redirect: 'http://127.0.0.1:54321/callback',
+    challenge: 'c'.repeat(43),
+    state: 's'.repeat(43),
+    oauthState: 'signed-state',
+  };
   try {
+    for (const launcher of [false, true]) {
+      for (const status of [400, 403, 429, 500, 'network']) {
+        cookies = new Map([['oauth_state', 'signed-state']]);
+        if (launcher) cookies.set('oauth_launcher', JSON.stringify(context));
+        globalThis.fetch = async (url, options) => {
+          if (url.endsWith('/token')) return Response.json({ access_token: 'discord-token' });
+          if (url.endsWith('/users/@me'))
+            return Response.json({ id: '567890123456789012', username: 'not.in.guild' });
+          assert.equal(options.method, 'PUT');
+          if (status === 'network') throw Error('Private Discord diagnostics');
+          return new Response('Private Discord diagnostics', { status });
+        };
+        const denied = await callback.GET(
+          request('/api/auth/discord/callback?state=signed-state&code=discord-code'),
+        );
+        const target = new URL(denied.headers.get('location'));
+        assert.equal(
+          target.searchParams.get('error'),
+          launcher ? 'auth_failed' : 'guild_join_failed',
+        );
+        assert.equal(target.searchParams.get('code'), null);
+        assert.equal(target.toString().includes('Private'), false);
+        assert.equal(denied.cookies.get('launched_session'), undefined);
+        assert.equal(denied.headers.get('cache-control'), 'private, no-store');
+        if (launcher) assert.equal(target.searchParams.get('state'), context.state);
+        else assert.equal(target.pathname, '/dashboard');
+        assert.equal(players.length, userCount);
+        assert.equal(codes.size, codeCount);
+      }
+    }
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('missing bot configuration stops login and readiness before any Discord or database call', async () => {
+  const previousToken = process.env.DISCORD_BOT_TOKEN;
+  const previousFetch = globalThis.fetch;
+  const queries = readinessQueries;
+  delete process.env.DISCORD_BOT_TOKEN;
+  globalThis.fetch = async () => assert.fail('No Discord call without a bot token');
+  try {
+    assert.equal((await login.GET(request('/api/auth/discord/login'))).status, 503);
+    assert.equal((await ready.GET()).status, 503);
+    assert.equal(readinessQueries, queries);
     cookies = new Map([['oauth_state', 'signed-state']]);
     const denied = await callback.GET(
       request('/api/auth/discord/callback?state=signed-state&code=discord-code'),
     );
-    assert.ok(denied.headers.get('location').includes('/dashboard?error=not_in_guild'));
-    assert.equal(players.length, userCount);
+    assert.equal(
+      new URL(denied.headers.get('location')).searchParams.get('error'),
+      'server_configuration',
+    );
   } finally {
+    process.env.DISCORD_BOT_TOKEN = previousToken;
     globalThis.fetch = previousFetch;
   }
 });
@@ -763,6 +876,7 @@ test('all recognized OAuth failures return to the bound launcher without exposin
           return scenario.stage === 'token'
             ? new Response('', { status: 400 })
             : Response.json({ access_token: 'test' });
+        if (url.includes('/members/')) return new Response(null, { status: 204 });
         return scenario.stage === 'profile'
           ? new Response('', { status: 403 })
           : Response.json({

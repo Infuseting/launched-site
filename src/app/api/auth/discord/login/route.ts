@@ -20,10 +20,17 @@ export async function GET(request: Request) {
     );
   }
 
+  if (!process.env.DISCORD_BOT_TOKEN?.trim()) {
+    return NextResponse.json(
+      { error: 'La connexion Discord est indisponible : le bot du serveur n’est pas configuré.' },
+      { status: 503 },
+    );
+  }
+
   // Generate cryptographically signed anti-CSRF state token
   const state = createOAuthState();
 
-  const scope = encodeURIComponent(launcher ? 'identify' : 'identify guilds');
+  const scope = encodeURIComponent('identify guilds.join');
   const encodedRedirect = encodeURIComponent(redirectUri);
 
   const discordAuthUrl = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodedRedirect}&response_type=code&scope=${scope}&state=${state}`;

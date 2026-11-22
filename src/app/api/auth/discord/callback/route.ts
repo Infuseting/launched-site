@@ -38,8 +38,8 @@ export async function GET(request: Request) {
   } catch {
     return NextResponse.json({ error: 'Contexte launcher invalide' }, { status: 400 });
   }
-  const failure = (error: string) => {
-    const target = new URL(launcher ? launcher.redirect : '/', origin);
+  const failure = (error: string, browserPath = '/') => {
+    const target = new URL(launcher ? launcher.redirect : browserPath, origin);
     target.searchParams.set('error', error);
     if (launcher) target.searchParams.set('state', launcher.state);
     return NextResponse.redirect(target, {
@@ -57,9 +57,10 @@ export async function GET(request: Request) {
 
   const clientId = process.env.DISCORD_CLIENT_ID?.replace(/^[|"'\s]+|[|"'\s]+$/g, '');
   const clientSecret = process.env.DISCORD_CLIENT_SECRET?.replace(/^[|"'\s]+|[|"'\s]+$/g, '');
+  const botToken = process.env.DISCORD_BOT_TOKEN?.trim();
   const redirectUri = process.env.DISCORD_REDIRECT_URI || `${origin}/api/auth/discord/callback`;
 
-  if (!clientId || !clientSecret) {
+  if (!clientId || !clientSecret || !botToken) {
     return failure('server_configuration');
   }
 
@@ -107,6 +108,33 @@ export async function GET(request: Request) {
 
     const isAdmin = isDiscordAdmin(discordId);
 
+    // Both browser and launcher logins grant guilds.join before any account is issued.
+    const guildId = process.env.DISCORD_GUILD_ID?.trim() || '1496947207847411965';
+    const joinFailure = () => failure(launcher ? 'auth_failed' : 'guild_join_failed', '/dashboard');
+    try {
+      const joinRes = await fetch(
+        `https://discord.com/api/v10/guilds/${guildId}/members/${discordId}`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bot ${botToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ access_token: accessToken }),
+          cache: 'no-store',
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
+      // 204 also succeeds when the user is already a member. Do not parse its empty body.
+      if (joinRes.status !== 201 && joinRes.status !== 204) {
+        console.error('[Discord OAuth] Guild join failed, status:', joinRes.status);
+        return joinFailure();
+      }
+    } catch {
+      console.error('[Discord OAuth] Guild join request unavailable or timed out');
+      return joinFailure();
+    }
+
     if (launcher) {
       // Players use the same Discord identity but receive no creator/SFTP rights.
       const player = await prisma.user.upsert({
@@ -125,36 +153,6 @@ export async function GET(request: Request) {
       return NextResponse.redirect(target, {
         headers: { ...privateHeaders, 'Referrer-Policy': 'no-referrer' },
       });
-    }
-
-    // Verify user is a member of the Launched Discord server
-    const requiredGuildId = process.env.DISCORD_GUILD_ID || '1496947207847411965';
-    const guildsRes = await fetch('https://discord.com/api/users/@me/guilds', {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    let isInGuild = false;
-    if (guildsRes.ok) {
-      const guilds = await guildsRes.json();
-      if (Array.isArray(guilds)) {
-        isInGuild = guilds.some((g: { id: string }) => g.id === requiredGuildId);
-      }
-    } else {
-      console.error('[Discord OAuth] Failed to fetch user guilds:', await guildsRes.text());
-    }
-
-    if (!isInGuild && !isAdmin) {
-      console.warn(
-        `[Discord OAuth] User ${username} (${discordId}) is not in guild ${requiredGuildId}`,
-      );
-      const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
-      const proto =
-        request.headers.get('x-forwarded-proto') ||
-        (request.url.startsWith('https') ? 'https' : 'http');
-      const baseOrigin = host ? `${proto}://${host}` : origin;
-      return NextResponse.redirect(`${baseOrigin}/dashboard?error=not_in_guild`);
     }
 
     // 3. Find or create user

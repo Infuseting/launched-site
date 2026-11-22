@@ -26,6 +26,11 @@ Le fichier `.env.example` décrit les variables attendues. Ne pas réutiliser se
 de démonstration en production. Le secret JWT chiffre aussi les identifiants SFTP
 historiques : une rotation doit prendre en compte les données déjà stockées.
 
+La connexion Discord demande `identify guilds.join` et ajoute automatiquement
+l’utilisateur au serveur officiel, depuis le site comme depuis le launcher.
+Configurer `DISCORD_BOT_TOKEN` côté serveur avant activation : consulter
+[le guide Discord](docs/discord-oauth.md) pour le Developer Portal et les permissions.
+
 ## Liens vers le launcher
 
 Chaque carte de session conserve son lien direct `launched://session/<slug>` et propose

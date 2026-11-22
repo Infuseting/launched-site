@@ -41,9 +41,15 @@ résultat au launcher ne dépend pas de cette fermeture.
 
 Une première connexion depuis le launcher crée un compte `PLAYER`, sans compte
 SFTP et sans accès à l’espace créateur. Elle ne nécessite pas d’appartenir au
-serveur Discord officiel. La connexion depuis le site conserve le contrôle
-d’appartenance au serveur Discord ; elle permet ensuite au joueur de devenir
+serveur Discord officiel au préalable : après autorisation du scope `guilds.join`,
+le callback du site y ajoute automatiquement le joueur. La connexion depuis le
+site effectue le même ajout ; elle permet ensuite au joueur de devenir
 créateur, avec un quota initial de zéro. Les rôles créateurs existants sont conservés.
+L’ajout doit réussir avant toute création de compte ou émission de code de connexion.
+Le retour Discord « déjà membre » est également accepté. En cas de refus ou
+d’indisponibilité Discord, la connexion peut être réessayée. Les membres soumis
+à la validation du règlement Discord doivent toujours la terminer sur Discord.
+Voir [la configuration OAuth et bot](discord-oauth.md) pour activer cet ajout.
 
 Dans le formulaire de session de l’espace créateur, « Accès des joueurs » permet
 de choisir entre « Accessible à tout le monde » et « Uniquement les comptes Discord
@@ -86,7 +92,9 @@ sont chargés via Rust, puis transmis à React sous forme d’images intégrées
    Pour une installation hors Docker : `npx prisma generate`, puis appliquer
    `npx prisma db push` avec la connexion de la base ciblée avant le démarrage.
 3. Conserver les variables Discord/JWT existantes et une `NEXT_PUBLIC_APP_URL`
-   HTTPS correspondant au domaine public. Aucun nouveau secret n’est nécessaire.
+   HTTPS correspondant au domaine public. Ajouter `DISCORD_BOT_TOKEN`, le token du
+   bot de la même application OAuth, et vérifier `DISCORD_GUILD_ID`. Le bot doit
+   être installé sur ce serveur avec la permission « Créer une invitation ».
    Purger les éventuels caches CDN/proxy des anciennes réponses publiques de
    `/sessions` et `/api/sessions/*` avant d’activer des sessions privées.
 4. Vérifier une vraie connexion Discord, fermer/rouvrir le launcher, puis tester
