@@ -1,4 +1,4 @@
-import { DashboardModal, DashboardModalTitle } from './DashboardModal';
+import { DashboardModal, DashboardModalHeader } from './DashboardModal';
 import Image from 'next/image';
 import React from 'react';
 import { ArrowRightLeft } from 'lucide-react';
@@ -37,19 +37,7 @@ export const CollaboratorsModal: React.FC<CollaboratorsModalProps> = ({
       onClose={onClose}
       className="bg-zinc-950 border border-white/10 rounded-xl max-w-md w-full p-6 space-y-5 text-xs"
     >
-      <div className="flex items-center justify-between border-b border-white/10 pb-3">
-        <DashboardModalTitle className="text-base font-bold text-white">
-          Collaborateurs : {session.name}
-        </DashboardModalTitle>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Fermer"
-          className="text-zinc-500 hover:text-white cursor-pointer"
-        >
-          ✕
-        </button>
-      </div>
+      <DashboardModalHeader title={`Collaborateurs : ${session.name}`} onClose={onClose} />
 
       <form onSubmit={onAddCollaborator} className="space-y-2">
         <label htmlFor="collaborator-name" className="block text-zinc-400 font-medium">

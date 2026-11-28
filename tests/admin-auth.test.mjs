@@ -45,7 +45,7 @@ for (const [name, replacement] of Object.entries({
   'next/server':
     'export const NextResponse = { json: (body, options) => Response.json(body, options) };',
   '@/lib/auth':
-    'export const getCurrentUser = async (request) => globalThis.__adminAuth.getCurrentUser(request);',
+    'export const getCurrentUser = async (request) => globalThis.__adminAuth.getCurrentUser(request); export const decryptSecret = (value) => value;',
   '@/lib/prisma': 'export const prisma = globalThis.__adminAuth.prisma;',
   '@/lib/sftpgo': 'export const syncSftpUser = async () => true;',
 }))

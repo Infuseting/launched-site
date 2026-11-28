@@ -11,7 +11,7 @@ export default function Navbar() {
 
   useEffect(() => {
     const controller = new AbortController();
-    authFetch('/api/dashboard/me', { signal: controller.signal })
+    authFetch('/api/dashboard/me?summary=1', { signal: controller.signal })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.user) {

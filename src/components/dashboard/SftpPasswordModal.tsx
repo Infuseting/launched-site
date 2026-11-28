@@ -1,4 +1,4 @@
-import { DashboardModal, DashboardModalTitle } from './DashboardModal';
+import { DashboardModal, DashboardModalHeader } from './DashboardModal';
 import React from 'react';
 import { Key, RefreshCw } from 'lucide-react';
 
@@ -31,22 +31,11 @@ export const SftpPasswordModal: React.FC<SftpPasswordModalProps> = ({
       onClose={onClose}
       className="bg-zinc-950 border border-white/10 rounded-xl max-w-md w-full p-6 space-y-4 text-xs"
     >
-      <div className="flex items-center justify-between border-b border-white/10 pb-3">
-        <div className="flex items-center gap-2">
-          <Key className="w-4 h-4 text-blue-500" />
-          <DashboardModalTitle className="text-base font-bold text-white">
-            Mot de passe SFTP
-          </DashboardModalTitle>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Fermer"
-          className="text-zinc-500 hover:text-white cursor-pointer"
-        >
-          ✕
-        </button>
-      </div>
+      <DashboardModalHeader
+        title="Mot de passe SFTP"
+        icon={<Key className="w-4 h-4 text-blue-500" />}
+        onClose={onClose}
+      />
 
       <p className="text-zinc-400 leading-relaxed">
         Définissez un mot de passe personnalisé pour vos connexions SFTP (minimum 6 caractères) ou

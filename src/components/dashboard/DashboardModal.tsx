@@ -5,6 +5,35 @@ import { Dialog } from '@base-ui/react/dialog';
 
 export const DashboardModalTitle = Dialog.Title;
 
+export function DashboardModalHeader({
+  title,
+  icon,
+  onClose,
+}: {
+  title: ReactNode;
+  icon?: ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between border-b border-white/10 pb-3">
+      <div className="flex items-center gap-2">
+        {icon}
+        <DashboardModalTitle className="text-base font-bold text-white">
+          {title}
+        </DashboardModalTitle>
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Fermer"
+        className="text-zinc-500 hover:text-white cursor-pointer"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
 /** Share focus trapping, Escape, scroll locking and focus restoration across forms. */
 export function DashboardModal({
   open,

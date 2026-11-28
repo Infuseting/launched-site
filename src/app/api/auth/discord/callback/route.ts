@@ -2,10 +2,17 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
-import { createSessionToken, setSessionCookie, isDiscordAdmin, verifyOAuthState } from '@/lib/auth';
+import {
+  createSessionToken,
+  decryptSecret,
+  encryptSecret,
+  isDiscordAdmin,
+  setSessionCookie,
+  verifyOAuthState,
+} from '@/lib/auth';
 import { syncSftpUser } from '@/lib/sftpgo';
 import { launcherContext } from '@/lib/launcher-protocol';
-import { createLauncherCode, privateHeaders } from '@/lib/launcher-auth';
+import { createLauncherCode, getAppOrigin, privateHeaders } from '@/lib/launcher-auth';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -183,7 +190,7 @@ export async function GET(request: Request) {
           role: isAdmin ? 'ADMIN' : 'CREATOR',
           sessionLimit: isAdmin ? 99 : 0, // Admins get high limit by default
           sftpUsername: sftpUser,
-          sftpPassword: generatedPassword,
+          sftpPassword: encryptSecret(generatedPassword),
         },
         include: {
           sessionMembers: {
@@ -218,9 +225,9 @@ export async function GET(request: Request) {
       const generatedPassword = crypto.randomBytes(8).toString('hex');
       const sftpUser =
         user.sftpUsername || `u_${cleanUsername || 'creator'}_${discordId.slice(-4)}`;
-      const sftpPass =
+      const sftpPlainPass =
         user.sftpPassword && user.sftpPassword !== 'dummy-encrypted-password'
-          ? user.sftpPassword
+          ? decryptSecret(user.sftpPassword)
           : generatedPassword;
 
       // Update username, avatar, admin role and sftp credentials if needed
@@ -230,7 +237,9 @@ export async function GET(request: Request) {
           username,
           avatar,
           ...(user.role === 'PLAYER' ? { role: 'CREATOR' as const } : {}),
-          ...(needsSftpGen ? { sftpUsername: sftpUser, sftpPassword: sftpPass } : {}),
+          ...(needsSftpGen
+            ? { sftpUsername: sftpUser, sftpPassword: encryptSecret(sftpPlainPass) }
+            : {}),
           ...(isAdmin && user.role !== 'ADMIN'
             ? { role: 'ADMIN', sessionLimit: Math.max(user.sessionLimit, 99) }
             : {}),
@@ -249,7 +258,7 @@ export async function GET(request: Request) {
         try {
           await syncSftpUser({
             username: user.sftpUsername,
-            password: user.sftpPassword || undefined,
+            password: user.sftpPassword ? decryptSecret(user.sftpPassword) : undefined,
             diskQuotaBytes: user.diskQuotaBytes,
             sessions: user.sessionMembers.map((m) => ({
               sessionId: m.session.id,
@@ -268,20 +277,14 @@ export async function GET(request: Request) {
       data: { discordId },
     });
 
-    // 4. Create JWT and set cookie
+    // 4. Create JWT and set HttpOnly cookie
     const token = await createSessionToken({
       userId: user.id,
       discordId: user.discordId,
       role: user.role,
     });
 
-    const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
-    const proto =
-      request.headers.get('x-forwarded-proto') ||
-      (request.url.startsWith('https') ? 'https' : 'http');
-    const baseOrigin = host ? `${proto}://${host}` : origin;
-    const targetUrl = new URL('/dashboard', baseOrigin);
-    targetUrl.searchParams.set('token', token);
+    const targetUrl = new URL('/dashboard', getAppOrigin(request));
     const response = NextResponse.redirect(targetUrl);
     await setSessionCookie(token, response);
 

@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { withAuth, validateInput } from '@/lib/api/middleware';
@@ -8,39 +7,12 @@ import { parsePresenceUpdate } from '@/lib/discord-presence';
 import { sessionLoaderUpdate } from '@/lib/session-loaders';
 import { parseAccessUpdate } from '@/lib/launcher-protocol';
 import { accessEntries } from '@/lib/launcher-auth';
-import { syncSftpUser, ensureSessionDirectories } from '@/lib/sftpgo';
+import { ensureSessionDirectories } from '@/lib/sftpgo';
+import { ensureUserSftpCredentials, resyncUserSftp } from '@/lib/sftp-credentials';
 
 export async function POST(request: Request) {
   return withAuth(request, async (initialUser) => {
-    let user = initialUser;
-
-    // Auto-provision SFTP credentials if missing
-    if (
-      !user.sftpUsername ||
-      !user.sftpPassword ||
-      user.sftpPassword === 'dummy-encrypted-password'
-    ) {
-      const cleanUsername = user.username
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, '')
-        .slice(0, 10);
-      const sftpUsername =
-        user.sftpUsername || `u_${cleanUsername || 'creator'}_${user.discordId.slice(-4)}`;
-      const sftpPassword =
-        user.sftpPassword && user.sftpPassword !== 'dummy-encrypted-password'
-          ? user.sftpPassword
-          : crypto.randomBytes(8).toString('hex');
-
-      user = await prisma.user.update({
-        where: { id: user.id },
-        data: { sftpUsername, sftpPassword },
-        include: {
-          sessionMembers: {
-            include: { session: true },
-          },
-        },
-      });
-    }
+    const { user } = await ensureUserSftpCredentials(initialUser);
 
     // Verify session quota
     const ownedCount = await prisma.sessionMember.count({
@@ -131,23 +103,7 @@ export async function POST(request: Request) {
     await ensureSessionDirectories(session.id);
 
     // Resync user's SFTP folders
-    if (user.sftpUsername) {
-      const allMembers = await prisma.sessionMember.findMany({
-        where: { userId: user.id },
-        include: { session: true },
-      });
-
-      await syncSftpUser({
-        username: user.sftpUsername,
-        password: user.sftpPassword || undefined,
-        diskQuotaBytes: user.diskQuotaBytes,
-        sessions: allMembers.map((m) => ({
-          sessionId: m.session.id,
-          slug: m.session.slug,
-          sessionName: m.session.name,
-        })),
-      });
-    }
+    await resyncUserSftp(user);
 
     return NextResponse.json({ success: true, session });
   });

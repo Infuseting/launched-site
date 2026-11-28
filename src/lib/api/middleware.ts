@@ -18,6 +18,10 @@ export function handleApiError(error: unknown): NextResponse {
     );
   }
 
+  if (error instanceof Error && error.name === 'AuthenticationStorageError') {
+    return NextResponse.json({ error: error.message }, { status: 503 });
+  }
+
   console.error('[API Error]', error);
   return NextResponse.json({ error: 'Une erreur interne est survenue' }, { status: 500 });
 }
@@ -50,12 +54,10 @@ export async function withAuth(
   }
 }
 
-/**
- * Ensures the caller is a member (OWNER or COLLABORATOR) of the requested session.
- */
-export async function withSessionMember(
+async function withSessionRole(
   request: Request,
   sessionId: string,
+  requiredRole: 'OWNER' | null,
   handler: (context: {
     user: AuthenticatedUser;
     member: SessionMember;
@@ -77,38 +79,7 @@ export async function withSessionMember(
       return NextResponse.json({ error: 'Access Denied' }, { status: 403 });
     }
 
-    return await handler({
-      user,
-      member,
-      session: member.session,
-    });
-  });
-}
-
-/**
- * Ensures the caller is strictly the OWNER of the requested session.
- */
-export async function withSessionOwner(
-  request: Request,
-  sessionId: string,
-  handler: (context: {
-    user: AuthenticatedUser;
-    member: SessionMember;
-    session: Session;
-  }) => Promise<NextResponse>,
-): Promise<NextResponse> {
-  return withAuth(request, async (user) => {
-    const member = await prisma.sessionMember.findUnique({
-      where: {
-        userId_sessionId: {
-          userId: user.id,
-          sessionId,
-        },
-      },
-      include: { session: true },
-    });
-
-    if (!member || member.role !== 'OWNER') {
+    if (requiredRole && member.role !== requiredRole) {
       return NextResponse.json(
         { error: 'Seul le propriétaire de la session est autorisé' },
         { status: 403 },
@@ -121,4 +92,34 @@ export async function withSessionOwner(
       session: member.session,
     });
   });
+}
+
+/**
+ * Ensures the caller is a member (OWNER or COLLABORATOR) of the requested session.
+ */
+export function withSessionMember(
+  request: Request,
+  sessionId: string,
+  handler: (context: {
+    user: AuthenticatedUser;
+    member: SessionMember;
+    session: Session;
+  }) => Promise<NextResponse>,
+): Promise<NextResponse> {
+  return withSessionRole(request, sessionId, null, handler);
+}
+
+/**
+ * Ensures the caller is strictly the OWNER of the requested session.
+ */
+export function withSessionOwner(
+  request: Request,
+  sessionId: string,
+  handler: (context: {
+    user: AuthenticatedUser;
+    member: SessionMember;
+    session: Session;
+  }) => Promise<NextResponse>,
+): Promise<NextResponse> {
+  return withSessionRole(request, sessionId, 'OWNER', handler);
 }

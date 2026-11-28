@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 import { prisma } from '@/lib/prisma';
+import { encryptSecret } from '@/lib/auth';
 import { withAuth } from '@/lib/api/middleware';
 import { updatePasswordSchema } from '@/lib/validations/sftp.schema';
 import { syncSftpUser } from '@/lib/sftpgo';
@@ -15,27 +16,22 @@ export async function POST(request: Request) {
 
     const rawBody = await request.json();
     const validated = updatePasswordSchema.parse(rawBody);
-
     const newPassword = validated.password || crypto.randomBytes(8).toString('hex');
 
-    // Fetch user's active sessions for SFTPGo mapping
     const members = await prisma.sessionMember.findMany({
       where: { userId: user.id },
       include: { session: true },
     });
 
-    const sessionMappings = members.map((m) => ({
-      sessionId: m.session.id,
-      slug: m.session.slug,
-      sessionName: m.session.name,
-    }));
-
-    // Update in SFTPGo first to ensure validation passes
     const sftpOk = await syncSftpUser({
       username: user.sftpUsername,
       password: newPassword,
       diskQuotaBytes: user.diskQuotaBytes,
-      sessions: sessionMappings,
+      sessions: members.map((m) => ({
+        sessionId: m.session.id,
+        slug: m.session.slug,
+        sessionName: m.session.name,
+      })),
     });
 
     if (!sftpOk) {
@@ -45,10 +41,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Save in DB
     await prisma.user.update({
       where: { id: user.id },
-      data: { sftpPassword: newPassword },
+      data: { sftpPassword: encryptSecret(newPassword) },
     });
 
     return NextResponse.json({

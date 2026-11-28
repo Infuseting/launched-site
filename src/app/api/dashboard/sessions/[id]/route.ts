@@ -8,7 +8,8 @@ import { parsePresenceUpdate } from '@/lib/discord-presence';
 import { sessionLoaderUpdate } from '@/lib/session-loaders';
 import { parseAccessUpdate } from '@/lib/launcher-protocol';
 import { accessEntries } from '@/lib/launcher-auth';
-import { syncSftpUser, getSessionPhysicalPath } from '@/lib/sftpgo';
+import { getSessionPhysicalPath } from '@/lib/sftpgo';
+import { resyncUserSftp } from '@/lib/sftp-credentials';
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -95,25 +96,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     }
 
     // Resync SFTP for each impacted member
-    for (const m of members) {
-      if (m.user.sftpUsername) {
-        const remaining = await prisma.sessionMember.findMany({
-          where: { userId: m.user.id },
-          include: { session: true },
-        });
-
-        await syncSftpUser({
-          username: m.user.sftpUsername,
-          password: m.user.sftpPassword || undefined,
-          diskQuotaBytes: m.user.diskQuotaBytes,
-          sessions: remaining.map((rem) => ({
-            sessionId: rem.session.id,
-            slug: rem.session.slug,
-            sessionName: rem.session.name,
-          })),
-        });
-      }
-    }
+    await Promise.all(members.map((m) => resyncUserSftp(m.user)));
 
     return NextResponse.json({ success: true });
   });

@@ -138,7 +138,7 @@ async function load(relative) {
       'export async function cookies() { return globalThis.__launcherTestCookies; }',
     ),
     '@/lib/auth': virtual(
-      'export const createOAuthState=()=>"signed-state"; export const verifyOAuthState=s=>s==="signed-state"; export const isDiscordAdmin=()=>false; export const createSessionToken=({role})=>{if(role==="PLAYER")throw Error("Player must not get creator token");return "browser-test-token"}; export const setSessionCookie=(token,response)=>{response.cookies.set("launched_session",token,{httpOnly:true})};',
+      'export const createOAuthState=()=>"signed-state"; export const verifyOAuthState=s=>s==="signed-state"; export const isDiscordAdmin=()=>false; export const encryptSecret=v=>v; export const decryptSecret=v=>v; export const createSessionToken=({role})=>{if(role==="PLAYER")throw Error("Player must not get creator token");return "browser-test-token"}; export const setSessionCookie=(token,response)=>{response.cookies.set("launched_session",token,{httpOnly:true})};',
     ),
     '@/lib/sftpgo': virtual(
       `import path from 'node:path'; export const getSessionPhysicalPath=id=>path.join(${JSON.stringify(storage)},id); export async function ensureSessionDirectories(){}; export const syncSftpUser=()=>{throw Error('Player must not get SFTP')};`,

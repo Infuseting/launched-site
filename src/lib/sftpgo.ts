@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import { isDefaultBackground } from './session-background';
@@ -8,6 +9,10 @@ const SFTPGO_API_KEY = process.env.SFTPGO_API_KEY || '';
 const SFTPGO_ADMIN_USER = process.env.SFTPGO_ADMIN_USER || 'admin';
 const SFTPGO_ADMIN_PASSWORD = process.env.SFTPGO_ADMIN_PASSWORD || '';
 const STORAGE_BASE_DIR = process.env.STORAGE_BASE_DIR || '/srv/sftpgo/sessions';
+
+export function isSftpConfigured(): boolean {
+  return Boolean(SFTPGO_API_KEY || SFTPGO_ADMIN_PASSWORD);
+}
 
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
@@ -133,34 +138,35 @@ export async function ensureSftpFolder(sessionId: string, sessionName: string): 
 
   if (!SFTPGO_API_KEY && !SFTPGO_ADMIN_PASSWORD) return folderName;
 
-  try {
-    // Check if folder exists
-    const checkRes = await fetch(`${SFTPGO_API_URL}/folders/${encodeURIComponent(folderName)}`, {
-      method: 'GET',
-      headers: await getHeaders(),
-    });
+  const headers = await getHeaders();
+  const checkRes = await fetch(`${SFTPGO_API_URL}/folders/${encodeURIComponent(folderName)}`, {
+    method: 'GET',
+    headers,
+  });
 
-    const folderPayload = {
-      name: folderName,
-      mapped_path: mappedPath,
-      description: `Launched Session: ${sessionName}`,
-    };
+  const folderPayload = {
+    name: folderName,
+    mapped_path: mappedPath,
+    description: `Launched Session: ${sessionName}`,
+  };
 
-    if (checkRes.status === 200) {
-      await fetch(`${SFTPGO_API_URL}/folders/${encodeURIComponent(folderName)}`, {
-        method: 'PUT',
-        headers: await getHeaders(),
-        body: JSON.stringify(folderPayload),
-      });
-    } else {
-      await fetch(`${SFTPGO_API_URL}/folders`, {
-        method: 'POST',
-        headers: await getHeaders(),
-        body: JSON.stringify(folderPayload),
-      });
-    }
-  } catch (err) {
-    console.warn(`[SFTPGo] Error managing virtual folder ${folderName}:`, err);
+  const upsertRes =
+    checkRes.status === 200
+      ? await fetch(`${SFTPGO_API_URL}/folders/${encodeURIComponent(folderName)}`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify(folderPayload),
+        })
+      : await fetch(`${SFTPGO_API_URL}/folders`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(folderPayload),
+        });
+
+  if (!upsertRes.ok) {
+    throw new Error(
+      `[SFTPGo] Failed to upsert virtual folder ${folderName} (HTTP ${upsertRes.status})`,
+    );
   }
 
   return folderName;
@@ -191,48 +197,45 @@ export async function syncSftpUser(params: {
 
   const { username, password, diskQuotaBytes, sessions } = params;
 
-  // Prepare virtual folders list
-  const virtualFolders = [];
-  for (const s of sessions) {
-    const folderName = await ensureSftpFolder(s.sessionId, s.sessionName);
-    virtualFolders.push({
-      name: folderName,
-      virtual_path: `/${s.slug}`,
-      quota_size: -1,
-      quota_files: -1,
-    });
-  }
-
-  const userPayload: Record<string, unknown> = {
-    username,
-    status: 1,
-    permissions: {
-      '/': ['*'],
-    },
-    filters: {
-      file_patterns: [
-        {
-          path: '/',
-          allowed_patterns: [],
-          denied_patterns: ['index.php', '.htaccess'],
-          deny_policy: 1, // 1 = Hide: completely removed from directory listings and denied
-        },
-      ],
-    },
-    quota_size: Number(diskQuotaBytes),
-    virtual_folders: virtualFolders,
-  };
-
-  if (password) {
-    userPayload.password = password;
-  }
-
   try {
-    const exists = await sftpUserExists(username);
+    const virtualFolders = await Promise.all(
+      sessions.map(async (s) => ({
+        name: await ensureSftpFolder(s.sessionId, s.sessionName),
+        virtual_path: `/${s.slug}`,
+        quota_size: -1,
+        quota_files: -1,
+      })),
+    );
+
+    const userPayload: Record<string, unknown> = {
+      username,
+      status: 1,
+      permissions: {
+        '/': ['*'],
+      },
+      filters: {
+        file_patterns: [
+          {
+            path: '/',
+            allowed_patterns: [],
+            denied_patterns: ['index.php', '.htaccess'],
+            deny_policy: 1, // 1 = Hide: completely removed from directory listings and denied
+          },
+        ],
+      },
+      quota_size: Number(diskQuotaBytes),
+      virtual_folders: virtualFolders,
+    };
+
+    if (password) {
+      userPayload.password = password;
+    }
+
+    const [exists, headers] = await Promise.all([sftpUserExists(username), getHeaders()]);
     if (exists) {
       const res = await fetch(`${SFTPGO_API_URL}/users/${encodeURIComponent(username)}`, {
         method: 'PUT',
-        headers: await getHeaders(),
+        headers,
         body: JSON.stringify(userPayload),
       });
       if (!res.ok) {
@@ -244,14 +247,12 @@ export async function syncSftpUser(params: {
       }
       return true;
     } else {
-      // Must have a password to create
       if (!password) {
-        userPayload.password =
-          Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-8);
+        userPayload.password = crypto.randomBytes(12).toString('hex');
       }
       const res = await fetch(`${SFTPGO_API_URL}/users`, {
         method: 'POST',
-        headers: await getHeaders(),
+        headers,
         body: JSON.stringify(userPayload),
       });
       if (!res.ok) {

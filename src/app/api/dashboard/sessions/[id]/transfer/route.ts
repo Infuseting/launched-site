@@ -1,18 +1,17 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { withSessionOwner } from '@/lib/api/middleware';
+import { v } from '@/lib/validations/validator';
+
+const transferOwnerSchema = v.object({
+  newOwnerId: v.string().min(1, 'Identifiant du nouveau propriétaire requis').trim(),
+});
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
   return withSessionOwner(request, id, async ({ user }) => {
-    const { newOwnerId } = await request.json();
-    if (!newOwnerId || typeof newOwnerId !== 'string') {
-      return NextResponse.json(
-        { error: 'Identifiant du nouveau propriétaire requis' },
-        { status: 400 },
-      );
-    }
+    const { newOwnerId } = transferOwnerSchema.parse(await request.json());
 
     if (newOwnerId === user.id) {
       return NextResponse.json(

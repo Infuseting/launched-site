@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { withSessionOwner } from '@/lib/api/middleware';
 import { addCollaboratorSchema } from '@/lib/validations/collaborator.schema';
-import { syncSftpUser } from '@/lib/sftpgo';
+import { resyncUserSftp } from '@/lib/sftp-credentials';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -56,23 +56,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     });
 
     // Mount virtual folder in target user's SFTP account
-    if (targetUser.sftpUsername) {
-      const targetSessions = await prisma.sessionMember.findMany({
-        where: { userId: targetUser.id },
-        include: { session: true },
-      });
-
-      await syncSftpUser({
-        username: targetUser.sftpUsername,
-        password: targetUser.sftpPassword || undefined,
-        diskQuotaBytes: targetUser.diskQuotaBytes,
-        sessions: targetSessions.map((m) => ({
-          sessionId: m.session.id,
-          slug: m.session.slug,
-          sessionName: m.session.name,
-        })),
-      });
-    }
+    await resyncUserSftp(targetUser);
 
     return NextResponse.json({
       success: true,
@@ -118,22 +102,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
     // Unmount virtual folder in target user's SFTP account
     const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
-    if (targetUser && targetUser.sftpUsername) {
-      const remainingSessions = await prisma.sessionMember.findMany({
-        where: { userId: targetUser.id },
-        include: { session: true },
-      });
-
-      await syncSftpUser({
-        username: targetUser.sftpUsername,
-        password: targetUser.sftpPassword || undefined,
-        diskQuotaBytes: targetUser.diskQuotaBytes,
-        sessions: remainingSessions.map((m) => ({
-          sessionId: m.session.id,
-          slug: m.session.slug,
-          sessionName: m.session.name,
-        })),
-      });
+    if (targetUser) {
+      await resyncUserSftp(targetUser);
     }
 
     return NextResponse.json({ success: true });

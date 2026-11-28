@@ -39,25 +39,35 @@ export function encryptSecret(plaintext: string): string {
   return `${iv.toString('hex')}:${tag.toString('hex')}:${encrypted.toString('hex')}`;
 }
 
+const ENCRYPTED_HEX_RE = /^[0-9a-f]+$/i;
+
+export class AuthenticationStorageError extends Error {
+  constructor(message = 'Service temporairement indisponible') {
+    super(message);
+    this.name = 'AuthenticationStorageError';
+  }
+}
+
 export function decryptSecret(cipherData: string): string {
-  try {
-    const [ivHex, tagHex, encryptedHex] = cipherData.split(':');
-    if (!ivHex || !tagHex || !encryptedHex) return cipherData; // Fallback if plaintext legacy
-
-    const key = crypto.createHash('sha256').update(getJwtSecret()).digest();
-    const iv = Buffer.from(ivHex, 'hex');
-    const tag = Buffer.from(tagHex, 'hex');
-    const encrypted = Buffer.from(encryptedHex, 'hex');
-
-    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-    decipher.setAuthTag(tag);
-
-    const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
-    return decrypted.toString('utf8');
-  } catch {
-    // If decryption fails (corrupted or unencrypted legacy data), return raw or empty
+  const parts = cipherData.split(':');
+  // Legacy plaintext fallback when value is not formatted as <24-hex iv>:<32-hex tag>:<hex ciphertext>.
+  if (
+    parts.length !== 3 ||
+    parts[0].length !== 24 ||
+    parts[1].length !== 32 ||
+    !parts.every((part) => part.length > 0 && ENCRYPTED_HEX_RE.test(part))
+  ) {
     return cipherData;
   }
+
+  const [ivHex, tagHex, encryptedHex] = parts;
+  const key = crypto.createHash('sha256').update(getJwtSecret()).digest();
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
+  decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+  return Buffer.concat([
+    decipher.update(Buffer.from(encryptedHex, 'hex')),
+    decipher.final(),
+  ]).toString('utf8');
 }
 
 /**
@@ -254,18 +264,11 @@ export async function getCurrentUser(requestOrToken?: Request | string | null) {
   try {
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      include: {
-        sessionMembers: {
-          include: {
-            session: true,
-          },
-        },
-      },
     });
     return user?.role === 'PLAYER' ? null : user;
   } catch (err) {
     console.error('[Auth] Error fetching user:', err);
-    return null;
+    throw new AuthenticationStorageError();
   }
 }
 

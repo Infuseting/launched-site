@@ -77,11 +77,6 @@ Consulter [CONTRIBUTING.md](CONTRIBUTING.md) avant de modifier le code et
 Les règles propres à la version Next.js installée sont dans `AGENTS.md` et
 `node_modules/next/dist/docs`.
 
-Le logo source et son générateur sont dans `../launched/branding`. Depuis le
-dépôt du launcher, `npm run branding:generate -- --site ../launched-site` met à
-jour tous les formats, dont les favicons Next.js et le PNG public de la présence
-Discord. Déployer ce PNG avant de distribuer le launcher qui utilise sa nouvelle URL.
-
 ## Exploitation
 
 `npm run build` puis `npm start` lancent une version de production. Le Dockerfile

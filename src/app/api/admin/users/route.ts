@@ -1,18 +1,39 @@
 import { NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { decryptSecret, getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { syncSftpUser } from '@/lib/sftpgo';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: Request) {
-  const user = await getCurrentUser(request);
+const VALID_ROLES = new Set(['ADMIN', 'CREATOR', 'PLAYER']);
+
+async function requireAdmin(request: Request) {
+  let user;
+  try {
+    user = await getCurrentUser(request);
+  } catch (err) {
+    console.error('[Admin Auth] Storage error:', err);
+    return {
+      errorResponse: NextResponse.json(
+        { error: 'Service temporairement indisponible' },
+        { status: 503 },
+      ),
+    };
+  }
   if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return { errorResponse: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
   }
   if (user.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'Forbidden: Admin required' }, { status: 403 });
+    return {
+      errorResponse: NextResponse.json({ error: 'Forbidden: Admin required' }, { status: 403 }),
+    };
   }
+  return { user };
+}
+
+export async function GET(request: Request) {
+  const { user, errorResponse } = await requireAdmin(request);
+  if (errorResponse) return errorResponse;
 
   const users = await prisma.user.findMany({
     include: {
@@ -27,39 +48,55 @@ export async function GET(request: Request) {
     orderBy: { createdAt: 'desc' },
   });
 
-  const formattedUsers = users.map((u) => {
-    const ownedCount = u.sessionMembers.filter((m) => m.role === 'OWNER').length;
-    return {
-      id: u.id,
-      discordId: u.discordId,
-      username: u.username,
-      avatar: u.avatar,
-      role: u.role,
-      sessionLimit: u.sessionLimit,
-      ownedSessionsCount: ownedCount,
-      diskQuotaBytes: Number(u.diskQuotaBytes),
-      sftpUsername: u.sftpUsername,
-      createdAt: u.createdAt,
-    };
-  });
+  const formattedUsers = users.map((u) => ({
+    id: u.id,
+    discordId: u.discordId,
+    username: u.username,
+    avatar: u.avatar,
+    role: u.role,
+    sessionLimit: u.sessionLimit,
+    ownedSessionsCount: u.sessionMembers.filter((m) => m.role === 'OWNER').length,
+    diskQuotaBytes: Number(u.diskQuotaBytes),
+    sftpUsername: u.sftpUsername,
+    createdAt: u.createdAt,
+  }));
 
   return NextResponse.json({ currentUserId: user.id, users: formattedUsers });
 }
 
 export async function PUT(request: Request) {
-  const admin = await getCurrentUser(request);
-  if (!admin) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-  if (admin.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'Forbidden: Admin required' }, { status: 403 });
+  const { user: admin, errorResponse } = await requireAdmin(request);
+  if (errorResponse) return errorResponse;
+
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Corps JSON invalide' }, { status: 400 });
   }
 
-  const body = await request.json();
   const { userId, sessionLimit, diskQuotaBytes, role } = body;
 
-  if (!userId) {
+  if (typeof userId !== 'string' || !userId.trim()) {
     return NextResponse.json({ error: 'userId required' }, { status: 400 });
+  }
+  if (
+    sessionLimit !== undefined &&
+    (typeof sessionLimit !== 'number' ||
+      !Number.isInteger(sessionLimit) ||
+      sessionLimit < 0 ||
+      sessionLimit > 999)
+  ) {
+    return NextResponse.json({ error: 'Limite de sessions invalide (0 à 999)' }, { status: 400 });
+  }
+  if (
+    diskQuotaBytes !== undefined &&
+    (typeof diskQuotaBytes !== 'number' || !Number.isInteger(diskQuotaBytes) || diskQuotaBytes < 0)
+  ) {
+    return NextResponse.json({ error: 'Quota disque invalide' }, { status: 400 });
+  }
+  if (role !== undefined && (typeof role !== 'string' || !VALID_ROLES.has(role))) {
+    return NextResponse.json({ error: 'Rôle invalide' }, { status: 400 });
   }
 
   if (userId === admin.id && role && role !== 'ADMIN') {
@@ -86,9 +123,9 @@ export async function PUT(request: Request) {
     const updated = await prisma.user.update({
       where: { id: userId },
       data: {
-        ...(sessionLimit !== undefined ? { sessionLimit: Number(sessionLimit) } : {}),
+        ...(sessionLimit !== undefined ? { sessionLimit } : {}),
         ...(diskQuotaBytes !== undefined ? { diskQuotaBytes: BigInt(diskQuotaBytes) } : {}),
-        ...(role && (role === 'ADMIN' || role === 'CREATOR') ? { role } : {}),
+        ...(role === 'ADMIN' || role === 'CREATOR' ? { role } : {}),
       },
       include: {
         sessionMembers: {
@@ -97,11 +134,10 @@ export async function PUT(request: Request) {
       },
     });
 
-    // If target has sftp username, resync their quota in SFTPGo
     if (updated.sftpUsername) {
       await syncSftpUser({
         username: updated.sftpUsername,
-        password: updated.sftpPassword || undefined,
+        password: updated.sftpPassword ? decryptSecret(updated.sftpPassword) : undefined,
         diskQuotaBytes: updated.diskQuotaBytes,
         sessions: updated.sessionMembers.map((m) => ({
           sessionId: m.session.id,
